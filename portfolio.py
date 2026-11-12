@@ -27,18 +27,29 @@ VARIANTS = {
     "B": {"trend": True, "market": False, "rank": "day", "desc": "40주선 위 종목만 · 당일 상승률 순"},
     "C": {"trend": True, "market": True, "rank": "day", "desc": "B + SPY 40주선 위일 때만 매수"},
     "D": {"trend": True, "market": True, "rank": "mom6", "desc": "C + 6개월 상승률 순"},
+    "E": {"trend": True, "market": True, "rank": "mom6", "exit": "ma20", "desc": "D 매수 · 20일선 이탈 매도"},
+    "F": {"trend": True, "market": True, "rank": "mom6", "exit": "ma40", "desc": "D 매수 · 40주선 이탈 매도"},
+    "G": {"entry": "long", "trend": False, "market": False, "rank": "mom6", "exit": "ma40",
+          "desc": "40주선 돌파 매수 · 40주선 이탈 매도 · 6개월 상승률 순"},
 }
 
 
 def run(v, close, eligible, sig, spy_ok, start):
-    up5, below5 = sig["short"]
-    cand = up5 & eligible
+    entry = sig[v.get("entry", "short")][0]
+    exit_rule = v.get("exit", "ma5")
+    if exit_rule == "ma5":
+        below = sig["short"][1]
+    elif exit_rule == "ma20":
+        below = close < close.rolling(20).mean()
+    else:
+        below = sig["long"][1]
+    cand = entry & eligible
     if v["trend"]:
         cand &= close > sig["ma40"]
     score = close.pct_change(fill_method=None) if v["rank"] == "day" else close / close.shift(126) - 1
 
     dates, cols = close.index, list(close.columns)
-    C, CAND, SC, BEL = close.values, cand.fillna(False).values, score.values, below5.fillna(False).values
+    C, CAND, SC, BEL = close.values, cand.fillna(False).values, score.values, below.fillna(False).values
     mkt = spy_ok.reindex(dates).fillna(False).values
     i0 = dates.searchsorted(pd.Timestamp(start))
 
@@ -46,7 +57,7 @@ def run(v, close, eligible, sig, spy_ok, start):
     equity, trades = [], []
     for i in range(i0, len(dates)):
         px = C[i]
-        # 매도: 매수 다음 날부터, 종가 < 5일선 (데이터 끊김도 매도)
+        # 매도: 매수 다음 날부터, 종가 < 기준 이평 (데이터 끊김도 매도)
         for j in list(pos):
             sh, ei, ep = pos[j]
             p = px[j] if not np.isnan(px[j]) else C[i - 1, j]
@@ -117,7 +128,7 @@ def main():
     spy_mdd = ((s_spy / s_spy.cummax()) - 1).min() * 100
 
     md = [f"# 소수 종목 백테스트 (최대 {MAX_POS}종목, {bt.START[:4]} ~ {close.index[-1].date()})", "",
-          "- 매수: 5일선 상향 돌파 (그날 거래량 상위 100, 주가 $20 이상) · 매도: 종가 < 5일선",
+          "- 매수: 이평 상향 돌파 (그날 거래량 상위 100, 주가 $20 이상) · 매도: 종가 < 기준 이평 (방식별)",
           f"- 각 종목 = 총자산의 1/{MAX_POS}, 신호일 종가 체결, 비용 매수·매도 각 {COST*100:.1f}%",
           f"- 후보군 = 현재 거래량 상위 {len(pool)}종목 (생존 편향 있음)", "", "## 요약", "",
           "| 방식 | 설명 | 누적수익 | 연평균(CAGR) | 최대낙폭 | 거래수 | 승률 | 평균보유일 |",
