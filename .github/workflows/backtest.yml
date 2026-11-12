@@ -24,6 +24,7 @@ jobs:
       - run: python backtest.py
       - run: python portfolio.py
       - run: python sp500_portfolio.py
+      - run: python backtest_ma5_20.py
       - name: Save results
         run: |
           git config user.name "github-actions[bot]"
