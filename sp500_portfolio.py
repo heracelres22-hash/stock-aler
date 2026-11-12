@@ -59,7 +59,7 @@ def main():
     for k, v in pf.VARIANTS.items():
         eq, t = pf.run(v, close, eligible, sig, spy_ok, bt.START)
         t.to_csv(bt.OUT / f"sp500_trades_{k}.csv", index=False)
-        if k == "G":  # 실시간 알림 초기 보유 종목
+        if False:  # (G 5종목 버전은 더 이상 실시간 알림 초기값으로 쓰지 않음)
             op = t[t["open"]]
             (bt.OUT / "g_positions.json").write_text(json.dumps(
                 {"as_of": str(close.index[-1].date()),
@@ -72,11 +72,35 @@ def main():
         years[k] = st.set_index("연도")["수익률"]
         best = t.sort_values("ret", ascending=False).head(5)
         top.append(f"- {k}: " + ", ".join(f"{r.symbol} {r.ret*100:+.0f}%" for r in best.itertuples()))
+    # H: G 규칙 · 종목 수 제한 없음 (조건 맞으면 전부 매수, 보유 종목 동일 비중) = 실시간 알림 규칙
+    up40, below40 = sig["long"]
+    th, held = bt.simulate(close, eligible, up40, below40, bt.START)
+    th["ret"] = th["exit"] * (1 - pf.COST) / (th["entry"] / (1 - pf.COST)) - 1
+    th.to_csv(bt.OUT / "sp500_trades_H.csv", index=False)
+    rets = close.pct_change(fill_method=None).where(held).mean(axis=1).fillna(0.0)
+    rets = rets[rets.index >= bt.START]
+    turnover = (held.astype(int).diff().abs().sum(axis=1) / held.sum(axis=1).replace(0, float("nan"))).fillna(0)
+    rets = rets - turnover.reindex(rets.index).fillna(0) * pf.COST  # 매매 비용 근사
+    eqh = (1 + rets).cumprod()
+    sth = pf.stats(eqh, th.rename(columns={}), spy)
+    toth = sth.iloc[-1]
+    md.append(f"| H | G 규칙 · 종목 수 제한 없음 (동일 비중) | {toth['수익률']:+.0f}% | {toth['CAGR']:+.1f}% | "
+              f"{toth['MDD']:.1f}% | {toth['거래수']:.0f} | {toth['승률']:.1f}% | {toth['평균보유일']:.1f} |")
+    years["H"] = sth.set_index("연도")["수익률"]
+    nh = held.sum(axis=1)[held.index >= bt.START]
+    print(f"H 평균 보유 {nh.mean():.1f}종목, 최대 {nh.max()}종목")
+    h_note = f"- H: 하루 평균 {nh.mean():.1f}종목 보유 (최대 {nh.max()}종목), 비용은 회전율 기준 근사"
+    op = th[th["open"]]
+    (bt.OUT / "g_positions.json").write_text(json.dumps(
+        {"as_of": str(close.index[-1].date()),
+         "positions": {r.symbol: {"since": str(r.entry_date.date()), "price": round(float(r.entry), 4)}
+                       for r in op.itertuples()}}, indent=1), encoding="utf-8")
     md.append(f"| SPY | 보유만 | {(s_spy.iloc[-1]/s_spy.iloc[0]-1)*100:+.0f}% | "
               f"{((s_spy.iloc[-1]/s_spy.iloc[0])**(1/yrs)-1)*100:+.1f}% | "
               f"{((s_spy/s_spy.cummax())-1).min()*100:.1f}% | - | - | - |")
     yt = pd.DataFrame(years)
     yt["SPY"] = pf.stats(eq, t, spy).set_index("연도")["SPY"]
+    md += ["", h_note]
     md += ["", "## 연도별 수익률", "", "| 연도 | " + " | ".join(yt.columns) + " |",
            "|" + "---|" * (len(yt.columns) + 1)]
     md += [f"| {y} | " + " | ".join(f"{x:+.1f}%" for x in r) + " |" for y, r in yt.iterrows()]

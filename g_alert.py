@@ -3,9 +3,8 @@
 
 규칙 (백테스트 G와 동일)
 - 대상: S&P 500 구성 종목 중 주가 $5 이상 $40 이하, 그날 거래량 상위 100
-- 매수: 40주선 상향 돌파 (지난주 종가 <= 40주선, 현재가 > 40주선) · 6개월 상승률 높은 순
+- 매수: 40주선 상향 돌파 (지난주 종가 <= 40주선, 현재가 > 40주선) · 조건에 맞으면 전부 (종목 수 제한 없음)
 - 매도: 현재가 < 40주선 (매수 다음 날부터)
-- 최대 5종목, 각 총자산의 20%
 
 장 마감 20분 전(15:40 ET 전후)에 하루 한 번 실행.
   python g_alert.py              # 실행 시간대(15:30~16:30 ET)에만, 하루 1회
@@ -27,7 +26,7 @@ import requests
 import alert as al
 import backtest as bt
 
-MAX_POS, MIN_PRICE, MAX_PRICE, TOP_N = 5, 5, 40, 100  # 주가 $5 이상 $40 이하
+MIN_PRICE, MAX_PRICE, TOP_N = 5, 40, 100  # 매수 시점 주가 $5 이상 $40 이하 · 보유 종목 수 제한 없음
 STATE = al.ROOT / "state_g.json"
 SEED = al.ROOT / "results" / "g_positions.json"
 SP500_URL = ("https://raw.githubusercontent.com/fja05680/sp500/master/"
@@ -78,7 +77,7 @@ def download(symbols: list[str]) -> tuple[pd.DataFrame, pd.DataFrame]:
 
 
 def decide(close, vol, members, positions, today_str):
-    """오늘의 매도·매수 결정. 반환: sells, buys, info(종목별 지표)."""
+    """오늘의 매도·매수 결정. 반환: sells, buys(6개월 상승률 순), info(종목별 지표)."""
     sig = bt.signals(close)
     up40, below40, ma40 = sig["long"][0].iloc[-1], sig["long"][1].iloc[-1], sig["ma40"].iloc[-1]
     px = close.iloc[-1]
@@ -91,25 +90,23 @@ def decide(close, vol, members, positions, today_str):
     for s, p in positions.items():
         if s in info and today_str > p["since"] and bool(below40.get(s, False)):
             sells.append(s)
-    remaining = len(positions) - len(sells)
 
     mem = [s for s in members if s in info]
     band = [s for s in mem if MIN_PRICE <= info[s]["price"] <= MAX_PRICE and pd.notna(vol[s].iloc[-1])]
     top = set(vol.iloc[-1][band].sort_values(ascending=False).index[:TOP_N])
     cands = [s for s in top if bool(up40.get(s, False)) and s not in positions and pd.notna(info[s]["mom6"])]
     cands.sort(key=lambda s: info[s]["mom6"], reverse=True)
-    buys = cands[:max(0, MAX_POS - remaining)]
-    return sells, buys, cands, info
+    return sells, cands, info
 
 
 def fmt_date(d: str) -> str:
     return d[5:].replace("-", "/")
 
 
-def message(now, today, sells, buys, waiting, positions_before, positions_after, info, meta) -> str:
+def message(now, today, sells, buys, positions_before, positions_after, info, meta) -> str:
     L = [f"📊 G전략 리포트 {fmt_date(today)} (뉴욕 {now:%H:%M})", ""]
     if buys:
-        L.append(f"🟢 매수 {len(buys)}종목 (각 총자산의 20%)")
+        L.append(f"🟢 매수 {len(buys)}종목 (40주선 돌파 · 6개월 상승률 순)")
         for s in buys:
             i = info[s]
             L += [f"• {al.label(s, meta)}",
@@ -125,7 +122,7 @@ def message(now, today, sells, buys, waiting, positions_before, positions_after,
         L.append("")
     if not buys and not sells:
         L += ["오늘 매매 없음", ""]
-    L.append(f"📋 보유 {len(positions_after)}/{MAX_POS}")
+    L.append(f"📋 보유 {len(positions_after)}종목")
     for s, p in sorted(positions_after.items(), key=lambda x: x[1]["since"]):
         i = info.get(s)
         if not i:
@@ -134,8 +131,6 @@ def message(now, today, sells, buys, waiting, positions_before, positions_after,
         L += [f"• {al.label(s, meta)}",
               f"   {fmt_date(p['since'])} ${p['price']:.2f} → ${i['price']:.2f} ({(i['price']/p['price']-1)*100:+.1f}%)"
               f"  40주선 대비 {(i['price']/i['ma40']-1)*100:+.1f}%"]
-    if waiting:
-        L += ["", "⏳ 자리가 없어 대기 중인 돌파 종목: " + ", ".join(waiting[:5])]
     L += ["", "※ 장 마감 직전 가격 기준이라 종가와 조금 다를 수 있어요.",
           "※ 백테스트 기반 참고용이며 투자 판단은 본인 책임이에요."]
     return "\n".join(L)
@@ -159,17 +154,16 @@ def main() -> int:
     today = close.index[-1].strftime("%Y-%m-%d")
     print(f"가격 데이터 {close.shape[1]}종목, 기준일 {today}")
 
-    sells, buys, cands, info = decide(close, vol, members, positions, today)
+    sells, buys, info = decide(close, vol, members, positions, today)
     before = dict(positions)
     after = {s: p for s, p in positions.items() if s not in sells}
     for s in buys:
         after[s] = {"since": today, "price": round(info[s]["price"], 4)}
-    waiting = [s for s in cands if s not in buys]
-    print(f"매도 {sells}, 매수 {buys}, 대기 {waiting}")
+    print(f"매도 {sells}, 매수 {buys}, 보유 {len(after)}종목")
 
     meta = al.load_meta()
     al.fill_meta(meta, sorted(set(after) | set(sells)), {})
-    msg = message(now, today, sells, buys, waiting, before, after, info, meta)
+    msg = message(now, today, sells, buys, before, after, info, meta)
     if args.dry_run:
         print("\n" + msg)
         return 0
