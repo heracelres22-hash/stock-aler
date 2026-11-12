@@ -1,7 +1,14 @@
 name: backtest
 
 on:
-  workflow_dispatch: {}   # Actions 탭에서 수동 실행
+  workflow_dispatch:      # Actions 탭에서 수동 실행
+    inputs:
+      target:
+        description: "all = 전체 백테스트, ma5_20 = 5일선 돌파/20일선 이탈만"
+        default: "all"
+      vol_avg:
+        description: "ma5_20 거래량 순위 기준 (1=당일, 5=5일 평균)"
+        default: "1"
 
 permissions:
   contents: write
@@ -14,6 +21,8 @@ jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      VOL_AVG: ${{ inputs.vol_avg || '1' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -21,9 +30,11 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements.txt
-      - run: python backtest.py
-      - run: python portfolio.py
-      - run: python sp500_portfolio.py
+      - if: ${{ inputs.target != 'ma5_20' }}
+        run: |
+          python backtest.py
+          python portfolio.py
+          python sp500_portfolio.py
       - run: python backtest_ma5_20.py
       - name: Save results
         run: |

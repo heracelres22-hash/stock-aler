@@ -13,6 +13,7 @@ python backtest_ma5_20.py → results/ma5_20.md, results/ma5_20_trades.csv
 from __future__ import annotations
 
 import json
+import os
 
 import numpy as np
 import pandas as pd
@@ -25,6 +26,8 @@ CFG = bt.CFG
 COST = 0.001
 LO, HI = CFG["min_price"], CFG["max_price"]
 N, ENTRY, EXIT = CFG["top_n"], CFG["short_ma_days"], CFG["exit_ma_days"]
+VOL_AVG = int(os.environ.get("VOL_AVG", "1"))   # 거래량 순위 기준: 1=당일, 5=최근 5일 평균
+TAG = "" if VOL_AVG == 1 else f"_v{VOL_AVG}"
 
 
 def pool() -> list[str]:
@@ -63,7 +66,8 @@ def main():
     print(f"후보군 {len(syms)}개 중 가격 데이터 {close.shape[1]}개")
 
     band = (close >= LO) & (close <= HI)
-    eligible = vol.where(band & close.notna()).rank(axis=1, ascending=False, method="first") <= N
+    vrank = vol.rolling(VOL_AVG, min_periods=VOL_AVG).mean() if VOL_AVG > 1 else vol
+    eligible = vrank.where(band & close.notna()).rank(axis=1, ascending=False, method="first") <= N
     ma_e, ma_x = close.rolling(ENTRY).mean(), close.rolling(EXIT).mean()
     up = (close.shift(1) <= ma_e.shift(1)) & (close > ma_e)
     below = close < ma_x
@@ -71,7 +75,7 @@ def main():
     # 1) 알림 그대로: 모든 신호 (종목 수 제한 없음) → 거래별 통계
     t, _ = bt.simulate(close, eligible, up, below, bt.START)
     t["ret"] = t["exit"] * (1 - COST) / (t["entry"] / (1 - COST)) - 1
-    t.to_csv(bt.OUT / "ma5_20_trades.csv", index=False)
+    t.to_csv(bt.OUT / f"ma5_20{TAG}_trades.csv", index=False)
     tt = trade_table(t)
 
     # 2) 실제 계좌처럼: K칸 슬롯 포트폴리오
@@ -84,8 +88,8 @@ def main():
         pf.MAX_POS, pf.COST = k, COST
         eq, tk = pf.run(v, close, eligible, sig, pd.Series(True, index=close.index), bt.START)
         st = pf.stats(eq, tk, spy)
-        eq.to_csv(bt.OUT / f"ma5_20_equity_{k}.csv")
-        tk.to_csv(bt.OUT / f"ma5_20_slot{k}_trades.csv", index=False)
+        eq.to_csv(bt.OUT / f"ma5_20{TAG}_equity_{k}.csv")
+        tk.to_csv(bt.OUT / f"ma5_20{TAG}_slot{k}_trades.csv", index=False)
         tot = st.iloc[-1]
         summ.append({"방식": f"{k}칸 (한 종목 {100/k:.0f}%)", "누적수익": tot["수익률"], "CAGR": tot["CAGR"],
                      "최대낙폭": tot["MDD"], "거래수": tot["거래수"], "승률": tot["승률"]})
@@ -98,7 +102,8 @@ def main():
     yt = yt.reset_index().rename(columns={"index": "연도"})
 
     md = [f"# 5일선 돌파 매수 → 20일선 이탈 매도 백테스트 ({bt.START[:4]} ~ {close.index[-1].date()})", "",
-          f"- 대상: 매일 주가 ${LO}~${HI} 종목 중 거래량 상위 {N}",
+          f"- 대상: 매일 주가 ${LO}~${HI} 종목 중 "
+          + ("당일 거래량" if VOL_AVG == 1 else f"최근 {VOL_AVG}일 평균 거래량") + f" 상위 {N}",
           f"- 후보군: 현재 거래량 상위 250 + S&P 500 이력 종목 = {close.shape[1]}개 (생존 편향 있음)",
           "- 신호일 종가 매수, 매수 다음 날부터 종가 < 20일선이면 그날 종가 매도",
           f"- 비용: 매수·매도 각 {COST*100:.1f}%", "",
@@ -113,7 +118,7 @@ def main():
         for r in best.itertuples()]
     md += ["", "## 가장 많이 거래된 종목", ""] + [
         f"- {s}: {c}회" for s, c in t["symbol"].value_counts().head(10).items()]
-    (bt.OUT / "ma5_20.md").write_text("\n".join(md), encoding="utf-8")
+    (bt.OUT / f"ma5_20{TAG}.md").write_text("\n".join(md), encoding="utf-8")
     print("\n".join(md))
 
 
