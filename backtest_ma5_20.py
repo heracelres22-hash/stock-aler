@@ -84,6 +84,8 @@ def main():
         pf.MAX_POS, pf.COST = k, COST
         eq, tk = pf.run(v, close, eligible, sig, pd.Series(True, index=close.index), bt.START)
         st = pf.stats(eq, tk, spy)
+        eq.to_csv(bt.OUT / f"ma5_20_equity_{k}.csv")
+        tk.to_csv(bt.OUT / f"ma5_20_slot{k}_trades.csv", index=False)
         tot = st.iloc[-1]
         summ.append({"방식": f"{k}칸 (한 종목 {100/k:.0f}%)", "누적수익": tot["수익률"], "CAGR": tot["CAGR"],
                      "최대낙폭": tot["MDD"], "거래수": tot["거래수"], "승률": tot["승률"]})

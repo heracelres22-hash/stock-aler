@@ -21,9 +21,6 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements.txt
-      - run: python backtest.py
-      - run: python portfolio.py
-      - run: python sp500_portfolio.py
       - run: python backtest_ma5_20.py
       - name: Save results
         run: |
