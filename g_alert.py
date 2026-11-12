@@ -2,7 +2,7 @@
 """G 전략 일일 리포트 → 텔레그램.
 
 규칙 (백테스트 G와 동일)
-- 대상: S&P 500 구성 종목 중 주가 $20 이상 $50 미만, 그날 거래량 상위 100
+- 대상: S&P 500 구성 종목 중 주가 $5 이상 $40 이하, 그날 거래량 상위 100
 - 매수: 40주선 상향 돌파 (지난주 종가 <= 40주선, 현재가 > 40주선) · 6개월 상승률 높은 순
 - 매도: 현재가 < 40주선 (매수 다음 날부터)
 - 최대 5종목, 각 총자산의 20%
@@ -27,7 +27,7 @@ import requests
 import alert as al
 import backtest as bt
 
-MAX_POS, MIN_PRICE, MAX_PRICE, TOP_N = 5, 20, 50, 100
+MAX_POS, MIN_PRICE, MAX_PRICE, TOP_N = 5, 5, 40, 100  # 주가 $5 이상 $40 이하
 STATE = al.ROOT / "state_g.json"
 SEED = al.ROOT / "results" / "g_positions.json"
 SP500_URL = ("https://raw.githubusercontent.com/fja05680/sp500/master/"
@@ -94,7 +94,7 @@ def decide(close, vol, members, positions, today_str):
     remaining = len(positions) - len(sells)
 
     mem = [s for s in members if s in info]
-    band = [s for s in mem if MIN_PRICE <= info[s]["price"] < MAX_PRICE and pd.notna(vol[s].iloc[-1])]
+    band = [s for s in mem if MIN_PRICE <= info[s]["price"] <= MAX_PRICE and pd.notna(vol[s].iloc[-1])]
     top = set(vol.iloc[-1][band].sort_values(ascending=False).index[:TOP_N])
     cands = [s for s in top if bool(up40.get(s, False)) and s not in positions and pd.notna(info[s]["mom6"])]
     cands.sort(key=lambda s: info[s]["mom6"], reverse=True)

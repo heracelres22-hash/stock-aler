@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """S&P 500 (시점별 실제 구성 종목) 대상 소수 종목 포트폴리오 백테스트.
 
-대상: 그날 S&P 500 구성 종목 중 주가 MIN_PRICE 이상 MAX_PRICE 미만, 그중 거래량 상위 100.
+대상: 그날 S&P 500 구성 종목 중 주가 MIN_PRICE 이상 MAX_PRICE 이하, 그중 거래량 상위 100.
 구성 종목 이력: data/sp500_history.csv (fja05680/sp500). 마지막 기록 이후는 마지막 구성 유지.
 규칙·비용·방식 A~G는 portfolio.py와 동일.
 python sp500_portfolio.py → results/sp500_portfolio.md
@@ -15,7 +15,7 @@ import pandas as pd
 import backtest as bt
 import portfolio as pf
 
-MIN_PRICE, MAX_PRICE = 20, 50
+MIN_PRICE, MAX_PRICE = 5, 40   # 매수 시점 주가 범위 (이상 ~ 이하)
 
 
 def membership() -> pd.DataFrame:
@@ -37,7 +37,7 @@ def main():
     print(f"S&P 500 이력 종목 {len(syms)}개 중 가격 데이터 {close.shape[1]}개 (없음 {len(missing)}개)")
 
     member = mem.reindex(close.index, method="ffill").reindex(columns=close.columns).fillna(False).astype(bool)
-    px_ok = (close >= MIN_PRICE) & (close < MAX_PRICE)
+    px_ok = (close >= MIN_PRICE) & (close <= MAX_PRICE)
     rank = vol.where(member & px_ok & close.notna()).rank(axis=1, ascending=False, method="first")
     eligible = rank <= bt.CFG["top_n"]
     print("하루 평균 매수 대상 종목 수:", round(eligible[eligible.index >= bt.START].sum(axis=1).mean(), 1))
@@ -48,11 +48,11 @@ def main():
     yrs = (s_spy.index[-1] - s_spy.index[0]).days / 365.25
 
     md = [f"# S&P 500 백테스트 (최대 {pf.MAX_POS}종목, {bt.START[:4]} ~ {close.index[-1].date()})", "",
-          f"- 대상: 그날 S&P 500 구성 종목 중 주가 ${MIN_PRICE} 이상 ${MAX_PRICE} 미만, 거래량 상위 {bt.CFG['top_n']}",
+          f"- 대상: 그날 S&P 500 구성 종목 중 주가 ${MIN_PRICE} 이상 ${MAX_PRICE} 이하, 거래량 상위 {bt.CFG['top_n']}",
           "- 구성 종목은 시점별 실제 이력 사용 (상장폐지·인수된 종목 중 Yahoo에 데이터 없는 "
           f"{len(missing)}개는 제외)",
           f"- 각 종목 = 총자산의 1/{pf.MAX_POS}, 신호일 종가 체결, 비용 매수·매도 각 {pf.COST*100:.1f}%",
-          "- 주가 조건은 매수 시점에만 적용 (보유 중 $50 넘어도 계속 보유)", "", "## 요약", "",
+          f"- 주가 조건은 매수 시점에만 적용 (보유 중 ${MAX_PRICE} 넘어도 계속 보유)", "", "## 요약", "",
           "| 방식 | 설명 | 누적수익 | 연평균(CAGR) | 최대낙폭 | 거래수 | 승률 | 평균보유일 |",
           "|---|---|---|---|---|---|---|---|"]
     years, top = {}, []
