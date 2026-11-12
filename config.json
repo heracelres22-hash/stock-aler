@@ -1,7 +1,10 @@
 {
-  "top_n": 100,
-  "min_price": 20,
+  "top_n": 10,
+  "min_price": 5,
+  "max_price": 40,
   "short_ma_days": 5,
+  "exit_ma_days": 20,
+  "long_enabled": false,
   "long_ma_weeks": 40,
   "exchanges": ["NMS", "NGM", "NCM", "NYQ", "ASE"],
   "intraday_note": true

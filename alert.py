@@ -44,7 +44,8 @@ def market_is_open(now: datetime) -> bool:
 
 
 # ---------------------------------------------------------------- 종목 선정
-def top_by_volume(n: int, exchanges: list[str], min_price: float) -> tuple[list[str], dict[str, str]]:
+def top_by_volume(n: int, exchanges: list[str], min_price: float,
+                  max_price: float | None = None) -> tuple[list[str], dict[str, str]]:
     """미국 정규 거래소 상장, 주가 min_price 이상 종목을 당일 거래량 순으로 (시총 조건 없음)."""
     import yfinance as yf
     from yfinance import EquityQuery as Q
@@ -53,6 +54,7 @@ def top_by_volume(n: int, exchanges: list[str], min_price: float) -> tuple[list[
         Q("eq", ["region", "us"]),
         Q("is-in", ["exchange", *exchanges]),
         Q("gte", ["intradayprice", min_price]),
+        *([Q("lte", ["intradayprice", max_price])] if max_price else []),
     ])
     res = yf.screen(query, sortField="dayvolume", sortAsc=False, size=n)
     quotes = [q for q in res.get("quotes", []) if q.get("symbol")][:n]
@@ -146,8 +148,8 @@ def check_exit(daily: pd.DataFrame, kind: str, cfg: dict, since: str) -> dict | 
     last_day = close.index[-1].strftime("%Y-%m-%d")
     if last_day <= since:  # 돌파 당일의 장중 되돌림은 다음 날 판단
         return None
-    if kind == "short":
-        series, window = close, cfg["short_ma_days"]
+    if kind == "short":  # 5일선 돌파 종목은 exit_ma_days(기본 20일선) 이탈로 추적
+        series, window = close, cfg.get("exit_ma_days", cfg["short_ma_days"])
     else:
         series, window = close.resample("W-FRI").last().dropna(), cfg["long_ma_weeks"]
     if len(series) < window:
@@ -172,6 +174,8 @@ def detect(daily: pd.DataFrame, short_days: int, long_weeks: int) -> list[dict]:
         found.append({"kind": "short", "ma": ma, "price": price, "chg": chg,
                       "period": last_day.strftime("%Y-%m-%d")})
 
+    if not long_weeks:
+        return found
     # 주봉: 금요일 기준 주간 마지막 종가 (진행 중인 주는 현재가)
     weekly = close.resample("W-FRI").last().dropna()
     ok, ma = crossed_up(weekly, long_weeks)
@@ -236,9 +240,11 @@ def format_message(hits: dict[str, list[tuple[str, dict]]], now: datetime, cfg: 
     titles = {"short": f"🟢 {cfg['short_ma_days']}일선 상향 돌파",
               "long": f"🔵 {cfg['long_ma_weeks']}주선 상향 돌파",
               "exit_long": f"🟠 {cfg['long_ma_weeks']}주선 하향 이탈 (돌파 알림 후)",
-              "exit_short": f"🔴 {cfg['short_ma_days']}일선 하향 이탈 (돌파 알림 후)"}
+              "exit_short": f"🔴 {cfg.get('exit_ma_days', cfg['short_ma_days'])}일선 이탈 "
+                            f"({cfg['short_ma_days']}일선 돌파 알림 후)"}
     lines = [f"📈 이동평균 신호 알림  {now:%m/%d %H:%M} (뉴욕)",
-             f"대상: 미국 거래량 상위 {cfg['top_n']}종목 (주가 ${cfg['min_price']:g} 이상)", ""]
+             f"대상: 미국 거래량 상위 {cfg['top_n']}종목 (주가 ${cfg['min_price']:g}"
+             + (f"~${cfg['max_price']:g})" if cfg.get("max_price") else " 이상)"), ""]
     for kind in ("long", "short", "exit_long", "exit_short"):
         if not hits.get(kind):
             continue
@@ -275,7 +281,8 @@ def main() -> int:
         return 0
 
     cfg = CONFIG
-    symbols, screen_names = top_by_volume(cfg["top_n"], cfg["exchanges"], cfg["min_price"])
+    symbols, screen_names = top_by_volume(cfg["top_n"], cfg["exchanges"], cfg["min_price"], cfg.get("max_price"))
+    long_weeks = cfg["long_ma_weeks"] if cfg.get("long_enabled", True) else None
     state = load_state()
     # 돌파 후 보유 중인 종목은 상위 100에서 빠져도 이탈 여부를 계속 확인
     act = state["active"]
@@ -283,7 +290,7 @@ def main() -> int:
     watch = symbols + sorted(held - set(symbols))
     data = download_daily(watch)
     print(f"종목 {len(watch)}개 중 {len(data)}개 데이터 확보 "
-          f"(이탈 감시 5일선 {len(act['short'])}, 40주선 {len(act['long'])})")
+          f"(추적 중 {len(act['short']) + len(act['long'])}종목)")
 
     hits: dict[str, list] = {"short": [], "long": [], "exit_short": [], "exit_long": []}
 
@@ -304,7 +311,7 @@ def main() -> int:
         df = data.get(sym)
         if df is None:
             continue
-        for h in detect(df, cfg["short_ma_days"], cfg["long_ma_weeks"]):
+        for h in detect(df, cfg["short_ma_days"], long_weeks):
             if sym not in act[h["kind"]]:
                 act[h["kind"]][sym] = {"since": h["period"], "price": round(h["price"], 4)}
             key = f"{sym}:{h['kind']}:{h['period']}"
@@ -315,7 +322,7 @@ def main() -> int:
 
     total = sum(len(v) for v in hits.values())
     print(f"새 신호 {total}건 (5일선 {len(hits['short'])}, 40주선 {len(hits['long'])}, "
-          f"5일선 이탈 {len(hits['exit_short'])}, 40주선 이탈 {len(hits['exit_long'])})")
+          f"{cfg.get('exit_ma_days', 5)}일선 이탈 {len(hits['exit_short'])}, 40주선 이탈 {len(hits['exit_long'])})")
     if total == 0:
         if not args.dry_run:
             save_state(state, now)

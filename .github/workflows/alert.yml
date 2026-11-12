@@ -2,9 +2,9 @@ name: stock-alert
 
 on:
   schedule:
-    # G전략 리포트: 뉴욕 15:40 (장 마감 20분 전). 서머타임/표준시 대비 두 번 예약,
-    # g_alert.py가 뉴욕 시간 15:30~16:30 + 하루 1회만 실제 실행합니다. (UTC 기준)
-    - cron: "40 19,20 * * 1-5"
+    # 미국 정규장(서머타임/표준시 모두 포함) 월~금, 30분 간격. 시간은 UTC 기준.
+    # 장 시간 여부는 alert.py가 뉴욕 시간으로 다시 확인합니다.
+    - cron: "*/30 13-21 * * 1-5"
   workflow_dispatch: {}   # Actions 탭에서 수동 실행 (장 시간과 무관하게 실행)
 
 permissions:
@@ -28,8 +28,8 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - name: G strategy report
-        run: python g_alert.py
+      - name: Check signals
+        run: python alert.py
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
@@ -39,5 +39,5 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
-          git add state_g.json meta.json 2>/dev/null || true
+          git add state.json meta.json 2>/dev/null || true
           git diff --cached --quiet || (git commit -m "chore: update alert state" && git push)
