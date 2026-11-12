@@ -99,10 +99,9 @@ def detect(daily: pd.DataFrame, short_days: int, long_weeks: int) -> list[dict]:
     # 주봉: 금요일 기준 주간 마지막 종가 (진행 중인 주는 현재가)
     weekly = close.resample("W-FRI").last().dropna()
     ok, ma = crossed_up(weekly, long_weeks)
-    if ok:
-        iso = last_day.isocalendar()
+    if ok:  # 중복 방지는 하루 단위 (같은 주라도 매일 다시 알림)
         found.append({"kind": "long", "ma": ma, "price": price, "chg": chg,
-                      "period": f"{iso.year}-W{iso.week:02d}"})
+                      "period": last_day.strftime("%Y-%m-%d")})
     return found
 
 
@@ -157,7 +156,7 @@ def format_message(hits: dict[str, list[tuple[str, dict]]], now: datetime, cfg: 
         if not hits.get(kind):
             continue
         lines.append(titles[kind])
-        for sym, h in hits[kind]:
+        for sym, h in sorted(hits[kind], key=lambda x: x[1]["chg"], reverse=True):  # 상승률 순
             gap = (h["price"] / h["ma"] - 1) * 100
             lines.append(f"• {sym}  ${h['price']:.2f} ({h['chg']:+.1f}%)  "
                          f"이평 ${h['ma']:.2f} 대비 {gap:+.1f}%")
