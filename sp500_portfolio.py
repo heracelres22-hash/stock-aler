@@ -8,6 +8,8 @@ python sp500_portfolio.py → results/sp500_portfolio.md
 """
 from __future__ import annotations
 
+import json
+
 import pandas as pd
 
 import backtest as bt
@@ -57,6 +59,12 @@ def main():
     for k, v in pf.VARIANTS.items():
         eq, t = pf.run(v, close, eligible, sig, spy_ok, bt.START)
         t.to_csv(bt.OUT / f"sp500_trades_{k}.csv", index=False)
+        if k == "G":  # 실시간 알림 초기 보유 종목
+            op = t[t["open"]]
+            (bt.OUT / "g_positions.json").write_text(json.dumps(
+                {"as_of": str(close.index[-1].date()),
+                 "positions": {r.symbol: {"since": str(r.entry_date.date()), "price": round(float(r.entry), 4)}
+                               for r in op.itertuples()}}, indent=1), encoding="utf-8")
         st = pf.stats(eq, t, spy)
         tot = st.iloc[-1]
         md.append(f"| {k} | {v['desc']} | {tot['수익률']:+.0f}% | {tot['CAGR']:+.1f}% | {tot['MDD']:.1f}% | "

@@ -63,7 +63,7 @@ def run(v, close, eligible, sig, spy_ok, start):
             p = px[j] if not np.isnan(px[j]) else C[i - 1, j]
             if i > ei and (BEL[i, j] or np.isnan(px[j])):
                 cash += sh * p * (1 - COST)
-                trades.append((cols[j], dates[ei], ep, dates[i], p, i - ei))
+                trades.append((cols[j], dates[ei], ep, dates[i], p, i - ei, False))
                 del pos[j]
         # 매수
         free = MAX_POS - len(pos)
@@ -80,9 +80,9 @@ def run(v, close, eligible, sig, spy_ok, start):
         val = cash + sum(sh * (px[j] if not np.isnan(px[j]) else C[i - 1, j]) for j, (sh, _, _) in pos.items())
         equity.append(val)
     for j, (sh, ei, ep) in pos.items():  # 보유 중
-        trades.append((cols[j], dates[ei], ep, dates[-1], C[-1, j], len(dates) - 1 - ei))
+        trades.append((cols[j], dates[ei], ep, dates[-1], C[-1, j], len(dates) - 1 - ei, True))
     eq = pd.Series(equity, index=dates[i0:])
-    t = pd.DataFrame(trades, columns=["symbol", "entry_date", "entry", "exit_date", "exit", "days"])
+    t = pd.DataFrame(trades, columns=["symbol", "entry_date", "entry", "exit_date", "exit", "days", "open"])
     t["ret"] = (t["exit"] * (1 - COST)) / (t["entry"] / (1 - COST)) - 1
     return eq, t
 
