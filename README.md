@@ -1,2 +1,55 @@
-# -
-ㅇㅇ
+# 📈 미국 주식 이동평균 돌파 알림 (텔레그램)
+
+미국 거래량 상위 100종목 중 **5일선 상향 돌파**, **40주선 상향 돌파**가 생기면 텔레그램으로 알려줍니다.
+GitHub Actions에서 무료로 돌아가며, 휴대폰 앱 설치가 필요 없습니다 (아이폰/안드로이드 모두 텔레그램만 있으면 됨).
+
+## 동작 방식
+- **대상**: 미국 정규 거래소(나스닥·뉴욕·아멕스) 상장, 주가 $20 이상 종목 중 당일 거래량 상위 100 (시총 무관, 장외 OTC 제외)
+- **5일선 돌파**: 어제 종가 ≤ 5일 이평 → 오늘(현재가) > 5일 이평
+- **40주선 돌파**: 지난주 종가 ≤ 40주 이평 → 이번 주(현재가) > 40주 이평
+- **확인 주기**: 미국 정규장 중 30분마다 (GitHub 사정으로 몇 분~십여 분 늦어질 수 있음)
+- **중복 방지**: 5일선은 같은 종목 하루 1번, 40주선은 같은 종목 주 1번만 알림
+
+## 설정 (10분)
+
+### 1. 텔레그램 봇 만들기
+1. 텔레그램에서 **@BotFather** 검색 → `/newbot` → 이름 입력
+2. 받은 **토큰**(`123456:ABC...`)을 복사해 둡니다.
+3. 만든 봇과 대화방을 열고 아무 메시지나 보냅니다 (`/start`).
+
+### 2. 내 Chat ID 확인
+브라우저에서 아래 주소를 열고 (토큰 부분 교체) `"chat":{"id":숫자` 의 숫자를 복사합니다.
+```
+https://api.telegram.org/bot<토큰>/getUpdates
+```
+지인도 받게 하려면: 지인이 봇에게 `/start`를 보낸 뒤 같은 주소에서 지인의 id를 확인합니다.
+
+### 3. GitHub 저장소 만들기
+1. GitHub에서 새 저장소 생성 (**Private 권장**) 후 이 폴더 전체를 업로드합니다.
+2. 저장소 → **Settings → Secrets and variables → Actions → New repository secret**
+   - `TELEGRAM_BOT_TOKEN` : 봇 토큰
+   - `TELEGRAM_CHAT_IDS` : chat id (여러 명이면 쉼표로 구분, 예: `11111,22222`)
+3. **Actions** 탭 → `stock-alert` → **Run workflow** 로 수동 실행해 동작 확인.
+
+이후에는 평일 장중에 자동으로 실행됩니다.
+
+## 설정 바꾸기
+`config.json`
+```json
+{ "top_n": 100, "min_price": 20, "short_ma_days": 5, "long_ma_weeks": 40,
+  "exchanges": ["NMS", "NGM", "NCM", "NYQ", "ASE"], "intraday_note": true }
+```
+
+## 로컬 테스트
+```bash
+pip install -r requirements.txt
+export TELEGRAM_BOT_TOKEN=...  TELEGRAM_CHAT_IDS=...
+python alert.py --test            # 연결 테스트 메시지
+python alert.py --force --dry-run # 지금 신호를 화면에만 출력
+```
+
+## 참고
+- 장중 신호는 종가 전에 되돌려질 수 있습니다 (속임 돌파).
+- 데이터는 Yahoo Finance(비공식)라 가끔 실패할 수 있습니다. 다음 실행 때 다시 확인합니다.
+- Private 저장소 무료 Actions 한도(월 2,000분) 안에서 충분히 돌아갑니다 (월 약 500~600분 예상).
+- 투자 판단은 본인 책임이며, 이 알림은 참고용입니다.

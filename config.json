@@ -1,0 +1,8 @@
+{
+  "top_n": 100,
+  "min_price": 20,
+  "short_ma_days": 5,
+  "long_ma_weeks": 40,
+  "exchanges": ["NMS", "NGM", "NCM", "NYQ", "ASE"],
+  "intraday_note": true
+}
