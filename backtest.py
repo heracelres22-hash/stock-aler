@@ -68,7 +68,7 @@ def signals(close: pd.DataFrame) -> dict[str, pd.DataFrame]:
     ma40 = (prev_sum + close) / w  # 진행 중인 주 = 당일 종가
     up40 = (prev_wc <= prev_wma) & (close > ma40)
     below40 = close < ma40
-    return {"short": (up5, below5), "long": (up40, below40)}
+    return {"short": (up5, below5), "long": (up40, below40), "ma5": ma5, "ma40": ma40}
 
 
 def simulate(close, eligible, up, below, start) -> tuple[pd.DataFrame, pd.DataFrame]:
