@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from datetime import datetime, timedelta, time as dtime
 from pathlib import Path
@@ -23,6 +24,14 @@ import requests
 ROOT = Path(__file__).resolve().parent
 CONFIG = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
 STATE_PATH = ROOT / "state.json"
+META_PATH = ROOT / "meta.json"          # 종목 영문명·섹터 캐시 (자동 생성)
+KO_NAMES = json.loads((ROOT / "ko_names.json").read_text(encoding="utf-8"))
+SECTOR_KO = {
+    "Technology": "기술", "Financial Services": "금융", "Healthcare": "헬스케어",
+    "Consumer Cyclical": "경기소비재", "Consumer Defensive": "필수소비재",
+    "Communication Services": "통신·미디어", "Industrials": "산업재", "Energy": "에너지",
+    "Utilities": "유틸리티", "Real Estate": "부동산", "Basic Materials": "소재",
+}
 NY = ZoneInfo("America/New_York")
 
 
@@ -35,7 +44,7 @@ def market_is_open(now: datetime) -> bool:
 
 
 # ---------------------------------------------------------------- 종목 선정
-def top_by_volume(n: int, exchanges: list[str], min_price: float) -> list[str]:
+def top_by_volume(n: int, exchanges: list[str], min_price: float) -> tuple[list[str], dict[str, str]]:
     """미국 정규 거래소 상장, 주가 min_price 이상 종목을 당일 거래량 순으로 (시총 조건 없음)."""
     import yfinance as yf
     from yfinance import EquityQuery as Q
@@ -46,10 +55,49 @@ def top_by_volume(n: int, exchanges: list[str], min_price: float) -> list[str]:
         Q("gte", ["intradayprice", min_price]),
     ])
     res = yf.screen(query, sortField="dayvolume", sortAsc=False, size=n)
-    syms = [q["symbol"] for q in res.get("quotes", []) if q.get("symbol")]
-    if not syms:
+    quotes = [q for q in res.get("quotes", []) if q.get("symbol")][:n]
+    if not quotes:
         raise RuntimeError("거래량 상위 종목을 가져오지 못했습니다.")
-    return syms[:n]
+    names = {q["symbol"]: q.get("longName") or q.get("shortName") or "" for q in quotes}
+    return [q["symbol"] for q in quotes], names
+
+
+# ---------------------------------------------------------------- 종목 정보
+def load_meta() -> dict:
+    if META_PATH.exists():
+        try:
+            return json.loads(META_PATH.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            pass
+    return {}
+
+
+def fill_meta(meta: dict, symbols: list[str], screen_names: dict[str, str]) -> None:
+    """캐시에 없는 종목만 Yahoo에서 영문명·섹터 조회."""
+    import yfinance as yf
+
+    for sym in symbols:
+        if sym in meta and meta[sym].get("sector"):
+            continue
+        name, sector = screen_names.get(sym, ""), ""
+        try:
+            info = yf.Ticker(sym).info
+            name = info.get("longName") or info.get("shortName") or name
+            sector = info.get("sector") or ("ETF" if info.get("quoteType") == "ETF" else "")
+        except Exception as e:  # 실패해도 알림은 보냄
+            print(f"[경고] {sym} 정보 조회 실패: {e}", file=sys.stderr)
+        meta[sym] = {"name": name, "sector": sector}
+        if sym not in KO_NAMES:
+            print(f"[참고] 한글명 없음: {sym} ({name}) → ko_names.json에 추가 가능")
+
+
+def label(sym: str, meta: dict) -> str:
+    m = meta.get(sym, {})
+    en, ko = re.sub(r",?\s+(Inc\.?|Corp\.?|Corporation|Co\.|Ltd\.?|plc|N\.V\.|S\.A\.|Holdings?,? Inc\.?)$", "",
+                    m.get("name", "")).strip(), KO_NAMES.get(sym, "")
+    sector = SECTOR_KO.get(m.get("sector", ""), m.get("sector", ""))
+    name = f"{ko} ({en})" if ko and en else (ko or en)
+    return f"{sym} {name}".strip() + (f" · {sector}" if sector else "")
 
 
 def download_daily(symbols: list[str]) -> dict[str, pd.DataFrame]:
@@ -147,7 +195,9 @@ def send_telegram(text: str) -> None:
                 print(f"[경고] {cid} 전송 실패: {r.status_code} {r.text}", file=sys.stderr)
 
 
-def format_message(hits: dict[str, list[tuple[str, dict]]], now: datetime, cfg: dict) -> str:
+def format_message(hits: dict[str, list[tuple[str, dict]]], now: datetime, cfg: dict,
+                   meta: dict | None = None) -> str:
+    meta = meta or {}
     titles = {"short": f"🟢 {cfg['short_ma_days']}일선 상향 돌파",
               "long": f"🔵 {cfg['long_ma_weeks']}주선 상향 돌파"}
     lines = [f"📈 이동평균 돌파 알림  {now:%m/%d %H:%M} (뉴욕)",
@@ -158,8 +208,8 @@ def format_message(hits: dict[str, list[tuple[str, dict]]], now: datetime, cfg: 
         lines.append(titles[kind])
         for sym, h in sorted(hits[kind], key=lambda x: x[1]["chg"], reverse=True):  # 상승률 순
             gap = (h["price"] / h["ma"] - 1) * 100
-            lines.append(f"• {sym}  ${h['price']:.2f} ({h['chg']:+.1f}%)  "
-                         f"이평 ${h['ma']:.2f} 대비 {gap:+.1f}%")
+            lines.append(f"• {label(sym, meta)}")
+            lines.append(f"   ${h['price']:.2f} ({h['chg']:+.1f}%)  이평 ${h['ma']:.2f} 대비 {gap:+.1f}%")
         lines.append("")
     if cfg.get("intraday_note", True):
         lines.append("※ 장중 신호는 종가 전까지 되돌려질 수 있어요.")
@@ -185,7 +235,7 @@ def main() -> int:
         return 0
 
     cfg = CONFIG
-    symbols = top_by_volume(cfg["top_n"], cfg["exchanges"], cfg["min_price"])
+    symbols, screen_names = top_by_volume(cfg["top_n"], cfg["exchanges"], cfg["min_price"])
     data = download_daily(symbols)
     print(f"종목 {len(symbols)}개 중 {len(data)}개 데이터 확보")
 
@@ -209,7 +259,11 @@ def main() -> int:
             save_state(state, now)
         return 0
 
-    msg = format_message(hits, now, cfg)
+    meta = load_meta()
+    fill_meta(meta, [s for k in hits for s, _ in hits[k]], screen_names)
+    if not args.dry_run:
+        META_PATH.write_text(json.dumps(meta, indent=1, sort_keys=True, ensure_ascii=False), encoding="utf-8")
+    msg = format_message(hits, now, cfg, meta)
     if args.dry_run:
         print("\n" + msg)
         return 0
