@@ -3,6 +3,14 @@
   "name": "Applied Optoelectronics, Inc.",
   "sector": "Technology"
  },
+ "AES": {
+  "name": "The AES Corporation",
+  "sector": "Utilities"
+ },
+ "APA": {
+  "name": "APA Corporation",
+  "sector": "Energy"
+ },
  "APH": {
   "name": "Amphenol Corporation",
   "sector": "Technology"
@@ -19,6 +27,14 @@
   "name": "AXT, Inc.",
   "sector": "Technology"
  },
+ "BEN": {
+  "name": "Franklin Templeton Inc.",
+  "sector": "Financial Services"
+ },
+ "BF-B": {
+  "name": "Brown-Forman Corporation",
+  "sector": "Consumer Defensive"
+ },
  "BKR": {
   "name": "Baker Hughes Company",
   "sector": "Energy"
@@ -31,9 +47,21 @@
   "name": "Chipotle Mexican Grill, Inc.",
   "sector": "Consumer Cyclical"
  },
+ "CNC": {
+  "name": "Centene Corporation",
+  "sector": "Healthcare"
+ },
+ "CPRT": {
+  "name": "Copart, Inc.",
+  "sector": "Industrials"
+ },
  "CSX": {
   "name": "CSX Corporation",
   "sector": "Industrials"
+ },
+ "CTVA": {
+  "name": "Corteva, Inc.",
+  "sector": "Basic Materials"
  },
  "CVS": {
   "name": "CVS Health Corporation",
@@ -42,6 +70,10 @@
  "DELL": {
   "name": "Dell Technologies Inc.",
   "sector": "Technology"
+ },
+ "DOW": {
+  "name": "Dow Inc.",
+  "sector": "Basic Materials"
  },
  "FCX": {
   "name": "Freeport-McMoRan Inc.",
@@ -55,6 +87,10 @@
   "name": "Fox Corporation",
   "sector": "Communication Services"
  },
+ "GEN": {
+  "name": "Gen Digital Inc.",
+  "sector": "Technology"
+ },
  "HOOD": {
   "name": "Robinhood Markets, Inc.",
   "sector": "Financial Services"
@@ -67,13 +103,29 @@
   "name": "HP Inc.",
   "sector": "Technology"
  },
+ "HST": {
+  "name": "Host Hotels & Resorts, Inc.",
+  "sector": "Real Estate"
+ },
  "IREN": {
   "name": "IREN Limited",
   "sector": "Financial Services"
  },
+ "IVZ": {
+  "name": "Invesco Ltd.",
+  "sector": "Financial Services"
+ },
+ "KDP": {
+  "name": "Keurig Dr Pepper Inc.",
+  "sector": "Consumer Defensive"
+ },
  "KEY": {
   "name": "KeyCorp",
   "sector": "Financial Services"
+ },
+ "KIM": {
+  "name": "Kimco Realty Corporation",
+  "sector": "Real Estate"
  },
  "MCHP": {
   "name": "Microchip Technology Incorporated",
@@ -90,6 +142,10 @@
  "MU": {
   "name": "Micron Technology, Inc.",
   "sector": "Technology"
+ },
+ "NCLH": {
+  "name": "Norwegian Cruise Line Holdings Ltd.",
+  "sector": "Consumer Cyclical"
  },
  "NFLX": {
   "name": "Netflix, Inc.",
@@ -143,6 +199,10 @@
   "name": "Sandisk Corporation",
   "sector": "Technology"
  },
+ "TSCO": {
+  "name": "Tractor Supply Company",
+  "sector": "Consumer Cyclical"
+ },
  "TSLA": {
   "name": "Tesla, Inc.",
   "sector": "Consumer Cyclical"
@@ -150,6 +210,14 @@
  "TSM": {
   "name": "Taiwan Semiconductor Manufacturing Company Limited",
   "sector": "Technology"
+ },
+ "UDR": {
+  "name": "UDR, Inc.",
+  "sector": "Real Estate"
+ },
+ "VTRS": {
+  "name": "Viatris Inc.",
+  "sector": "Healthcare"
  },
  "VZ": {
   "name": "Verizon Communications Inc.",
