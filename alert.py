@@ -130,10 +130,38 @@ def crossed_up(series: pd.Series, window: int) -> tuple[bool, float | None]:
     return bool(prev_c <= prev_ma and cur_c > cur_ma), float(cur_ma)
 
 
-def detect(daily: pd.DataFrame, short_days: int, long_weeks: int) -> list[dict]:
-    close = daily["Close"].astype(float)
+def closes(daily: pd.DataFrame) -> pd.Series:
+    close = daily["Close"].astype(float).dropna()
     idx = pd.DatetimeIndex(close.index)
     close.index = idx.tz_localize(None) if idx.tz is not None else idx
+    return close
+
+
+def check_exit(daily: pd.DataFrame, kind: str, cfg: dict, since: str) -> dict | None:
+    """돌파 알림 후 감시 중인 종목이 (돌파 다음 날 이후) 현재가 < 이평 이면 이탈.
+    kind="short": 일봉 5일선, kind="long": 주봉 40주선(진행 중인 주는 현재가)."""
+    close = closes(daily)
+    if len(close) < 2:
+        return None
+    last_day = close.index[-1].strftime("%Y-%m-%d")
+    if last_day <= since:  # 돌파 당일의 장중 되돌림은 다음 날 판단
+        return None
+    if kind == "short":
+        series, window = close, cfg["short_ma_days"]
+    else:
+        series, window = close.resample("W-FRI").last().dropna(), cfg["long_ma_weeks"]
+    if len(series) < window:
+        return None
+    ma = float(series.rolling(window).mean().iloc[-1])
+    price = float(close.iloc[-1])
+    if price >= ma:
+        return None
+    return {"kind": f"exit_{kind}", "ma": ma, "price": price,
+            "chg": (price / float(close.iloc[-2]) - 1) * 100, "period": last_day}
+
+
+def detect(daily: pd.DataFrame, short_days: int, long_weeks: int) -> list[dict]:
+    close = closes(daily)
     price = float(close.iloc[-1])
     chg = (price / float(close.iloc[-2]) - 1) * 100 if len(close) > 1 else 0.0
     last_day = close.index[-1]
@@ -157,10 +185,17 @@ def detect(daily: pd.DataFrame, short_days: int, long_weeks: int) -> list[dict]:
 def load_state() -> dict:
     if STATE_PATH.exists():
         try:
-            return json.loads(STATE_PATH.read_text(encoding="utf-8"))
+            st = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+            st.setdefault("sent", {})
+            act = st.setdefault("active", {})
+            if act and not set(act) <= {"short", "long"}:  # 예전 형식(5일선만) 변환
+                act = st["active"] = {"short": act}
+            act.setdefault("short", {})
+            act.setdefault("long", {})
+            return st
         except json.JSONDecodeError:
             pass
-    return {"sent": {}}
+    return {"sent": {}, "active": {"short": {}, "long": {}}}
 
 
 def save_state(state: dict, now: datetime) -> None:
@@ -199,10 +234,12 @@ def format_message(hits: dict[str, list[tuple[str, dict]]], now: datetime, cfg: 
                    meta: dict | None = None) -> str:
     meta = meta or {}
     titles = {"short": f"🟢 {cfg['short_ma_days']}일선 상향 돌파",
-              "long": f"🔵 {cfg['long_ma_weeks']}주선 상향 돌파"}
-    lines = [f"📈 이동평균 돌파 알림  {now:%m/%d %H:%M} (뉴욕)",
+              "long": f"🔵 {cfg['long_ma_weeks']}주선 상향 돌파",
+              "exit_long": f"🟠 {cfg['long_ma_weeks']}주선 하향 이탈 (돌파 알림 후)",
+              "exit_short": f"🔴 {cfg['short_ma_days']}일선 하향 이탈 (돌파 알림 후)"}
+    lines = [f"📈 이동평균 신호 알림  {now:%m/%d %H:%M} (뉴욕)",
              f"대상: 미국 거래량 상위 {cfg['top_n']}종목 (주가 ${cfg['min_price']:g} 이상)", ""]
-    for kind in ("long", "short"):
+    for kind in ("long", "short", "exit_long", "exit_short"):
         if not hits.get(kind):
             continue
         lines.append(titles[kind])
@@ -210,6 +247,9 @@ def format_message(hits: dict[str, list[tuple[str, dict]]], now: datetime, cfg: 
             gap = (h["price"] / h["ma"] - 1) * 100
             lines.append(f"• {label(sym, meta)}")
             lines.append(f"   ${h['price']:.2f} ({h['chg']:+.1f}%)  이평 ${h['ma']:.2f} 대비 {gap:+.1f}%")
+            if kind.startswith("exit"):
+                ret = (h["price"] / h["entry_price"] - 1) * 100
+                lines.append(f"   돌파 {h['since'][5:].replace('-', '/')} ${h['entry_price']:.2f} → 수익률 {ret:+.1f}%")
         lines.append("")
     if cfg.get("intraday_note", True):
         lines.append("※ 장중 신호는 종가 전까지 되돌려질 수 있어요.")
@@ -236,24 +276,46 @@ def main() -> int:
 
     cfg = CONFIG
     symbols, screen_names = top_by_volume(cfg["top_n"], cfg["exchanges"], cfg["min_price"])
-    data = download_daily(symbols)
-    print(f"종목 {len(symbols)}개 중 {len(data)}개 데이터 확보")
-
     state = load_state()
-    hits: dict[str, list] = {"short": [], "long": []}
+    # 돌파 후 보유 중인 종목은 상위 100에서 빠져도 이탈 여부를 계속 확인
+    act = state["active"]
+    held = set(act["short"]) | set(act["long"])
+    watch = symbols + sorted(held - set(symbols))
+    data = download_daily(watch)
+    print(f"종목 {len(watch)}개 중 {len(data)}개 데이터 확보 "
+          f"(이탈 감시 5일선 {len(act['short'])}, 40주선 {len(act['long'])})")
+
+    hits: dict[str, list] = {"short": [], "long": [], "exit_short": [], "exit_long": []}
+
+    # 1) 이탈 확인 (돌파 알림을 받았던 종목만)
+    for kind in ("short", "long"):
+        for sym, pos in list(act[kind].items()):
+            df = data.get(sym)
+            if df is None:
+                continue
+            h = check_exit(df, kind, cfg, pos["since"])
+            if h:
+                h.update(since=pos["since"], entry_price=pos["price"])
+                hits[h["kind"]].append((sym, h))
+                del act[kind][sym]
+
+    # 2) 돌파 확인
     for sym in symbols:  # 거래량 순서 유지
         df = data.get(sym)
         if df is None:
             continue
         for h in detect(df, cfg["short_ma_days"], cfg["long_ma_weeks"]):
+            if sym not in act[h["kind"]]:
+                act[h["kind"]][sym] = {"since": h["period"], "price": round(h["price"], 4)}
             key = f"{sym}:{h['kind']}:{h['period']}"
             if key in state["sent"]:
                 continue
             hits[h["kind"]].append((sym, h))
             state["sent"][key] = now.isoformat()
 
-    total = len(hits["short"]) + len(hits["long"])
-    print(f"새 신호 {total}건 (5일선 {len(hits['short'])}, 40주선 {len(hits['long'])})")
+    total = sum(len(v) for v in hits.values())
+    print(f"새 신호 {total}건 (5일선 {len(hits['short'])}, 40주선 {len(hits['long'])}, "
+          f"5일선 이탈 {len(hits['exit_short'])}, 40주선 이탈 {len(hits['exit_long'])})")
     if total == 0:
         if not args.dry_run:
             save_state(state, now)
