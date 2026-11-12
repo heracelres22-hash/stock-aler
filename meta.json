@@ -1,0 +1,142 @@
+{
+ "AAOI": {
+  "name": "Applied Optoelectronics, Inc.",
+  "sector": "Technology"
+ },
+ "APH": {
+  "name": "Amphenol Corporation",
+  "sector": "Technology"
+ },
+ "ASTS": {
+  "name": "AST SpaceMobile, Inc.",
+  "sector": "Technology"
+ },
+ "ASX": {
+  "name": "ASE Technology Holding Co., Ltd.",
+  "sector": "Technology"
+ },
+ "AXTI": {
+  "name": "AXT, Inc.",
+  "sector": "Technology"
+ },
+ "BKR": {
+  "name": "Baker Hughes Company",
+  "sector": "Energy"
+ },
+ "CVS": {
+  "name": "CVS Health Corporation",
+  "sector": "Healthcare"
+ },
+ "DELL": {
+  "name": "Dell Technologies Inc.",
+  "sector": "Technology"
+ },
+ "FCX": {
+  "name": "Freeport-McMoRan Inc.",
+  "sector": "Basic Materials"
+ },
+ "FIS": {
+  "name": "Fidelity National Information Services, Inc.",
+  "sector": "Technology"
+ },
+ "FOXA": {
+  "name": "Fox Corporation",
+  "sector": "Communication Services"
+ },
+ "HOOD": {
+  "name": "Robinhood Markets, Inc.",
+  "sector": "Financial Services"
+ },
+ "HPQ": {
+  "name": "HP Inc.",
+  "sector": "Technology"
+ },
+ "IREN": {
+  "name": "IREN Limited",
+  "sector": "Financial Services"
+ },
+ "KEY": {
+  "name": "KeyCorp",
+  "sector": "Financial Services"
+ },
+ "MCHP": {
+  "name": "Microchip Technology Incorporated",
+  "sector": "Technology"
+ },
+ "META": {
+  "name": "Meta Platforms, Inc.",
+  "sector": "Communication Services"
+ },
+ "MU": {
+  "name": "Micron Technology, Inc.",
+  "sector": "Technology"
+ },
+ "NFLX": {
+  "name": "Netflix, Inc.",
+  "sector": "Communication Services"
+ },
+ "NOW": {
+  "name": "ServiceNow, Inc.",
+  "sector": "Technology"
+ },
+ "NVO": {
+  "name": "Novo Nordisk A/S",
+  "sector": "Healthcare"
+ },
+ "ORCL": {
+  "name": "Oracle Corporation",
+  "sector": "Technology"
+ },
+ "OXY": {
+  "name": "Occidental Petroleum Corporation",
+  "sector": "Energy"
+ },
+ "PEP": {
+  "name": "PepsiCo, Inc.",
+  "sector": "Consumer Defensive"
+ },
+ "PFE": {
+  "name": "Pfizer Inc.",
+  "sector": "Healthcare"
+ },
+ "PR": {
+  "name": "Permian Resources Corporation",
+  "sector": "Energy"
+ },
+ "QCOM": {
+  "name": "QUALCOMM Incorporated",
+  "sector": "Technology"
+ },
+ "RF": {
+  "name": "Regions Financial Corporation",
+  "sector": "Financial Services"
+ },
+ "SKHY": {
+  "name": "SK hynix Inc.",
+  "sector": "Technology"
+ },
+ "SMCI": {
+  "name": "Super Micro Computer, Inc.",
+  "sector": "Technology"
+ },
+ "SNDK": {
+  "name": "Sandisk Corporation",
+  "sector": "Technology"
+ },
+ "TSLA": {
+  "name": "Tesla, Inc.",
+  "sector": "Consumer Cyclical"
+ },
+ "TSM": {
+  "name": "Taiwan Semiconductor Manufacturing Company Limited",
+  "sector": "Technology"
+ },
+ "VZ": {
+  "name": "Verizon Communications Inc.",
+  "sector": "Communication Services"
+ },
+ "XOM": {
+  "name": "ExxonMobil Holdings Corporation",
+  "sector": "Energy"
+ }
+}
