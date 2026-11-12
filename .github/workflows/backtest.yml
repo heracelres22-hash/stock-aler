@@ -23,6 +23,7 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python backtest.py
       - run: python portfolio.py
+      - run: python sp500_portfolio.py
       - name: Save results
         run: |
           git config user.name "github-actions[bot]"
