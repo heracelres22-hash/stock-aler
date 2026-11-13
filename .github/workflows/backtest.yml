@@ -4,7 +4,7 @@ on:
   workflow_dispatch:      # Actions 탭에서 수동 실행
     inputs:
       target:
-        description: "all = 전체 백테스트, ma5_20 = 5일선 돌파/20일선 이탈만"
+        description: "all = 전체, ma5_20 = 5일선 돌파/20일선 이탈, screen = 매도 소진 후 반등"
         default: "all"
       vol_avg:
         description: "ma5_20 거래량 순위 기준 (1=당일, 5=5일 평균)"
@@ -20,7 +20,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90
     env:
       VOL_AVG: ${{ inputs.vol_avg || '1' }}
     steps:
@@ -30,12 +30,15 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements.txt
-      - if: ${{ inputs.target != 'ma5_20' }}
+      - if: ${{ inputs.target == 'all' }}
         run: |
           python backtest.py
           python portfolio.py
           python sp500_portfolio.py
-      - run: python backtest_ma5_20.py
+      - if: ${{ inputs.target != 'screen' }}
+        run: python backtest_ma5_20.py
+      - if: ${{ inputs.target == 'screen' }}
+        run: python backtest_screen.py
       - name: Save results
         run: |
           git config user.name "github-actions[bot]"
