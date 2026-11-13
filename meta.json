@@ -7,6 +7,14 @@
   "name": "The AES Corporation",
   "sector": "Utilities"
  },
+ "AIIO": {
+  "name": "Robo.ai Inc.",
+  "sector": "Technology"
+ },
+ "ANIK": {
+  "name": "Anika Therapeutics, Inc.",
+  "sector": "Healthcare"
+ },
  "APA": {
   "name": "APA Corporation",
   "sector": "Energy"
@@ -27,6 +35,10 @@
   "name": "AXT, Inc.",
   "sector": "Technology"
  },
+ "BDSX": {
+  "name": "Biodesix, Inc.",
+  "sector": "Healthcare"
+ },
  "BEN": {
   "name": "Franklin Templeton Inc.",
   "sector": "Financial Services"
@@ -42,6 +54,10 @@
  "CCL": {
   "name": "Carnival Corporation Ltd.",
   "sector": "Consumer Cyclical"
+ },
+ "CLMT": {
+  "name": "Calumet, Inc.",
+  "sector": "Basic Materials"
  },
  "CMG": {
   "name": "Chipotle Mexican Grill, Inc.",
@@ -126,6 +142,10 @@
  "KIM": {
   "name": "Kimco Realty Corporation",
   "sector": "Real Estate"
+ },
+ "KRT": {
+  "name": "Karat Packaging Inc.",
+  "sector": "Consumer Cyclical"
  },
  "MCHP": {
   "name": "Microchip Technology Incorporated",
@@ -214,6 +234,10 @@
  "UDR": {
   "name": "UDR, Inc.",
   "sector": "Real Estate"
+ },
+ "VCYT": {
+  "name": "Veracyte, Inc.",
+  "sector": "Healthcare"
  },
  "VTRS": {
   "name": "Viatris Inc.",
