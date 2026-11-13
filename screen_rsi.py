@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""매도 소진 후 반등 스캐너 → 텔레그램 (장 마감 후 하루 1회).
+"""횡보 후 5일선 돌파 스캐너 → 텔레그램 (장 마감 후 하루 1회).
 
-1) 매도 소진 조건 (config.json "screen"): 주가 $5~$40, RSI(14) <= 30,
-   거래량 5거래일 연속 감소, 당일 거래량 < 직전 20일 평균
-2) 조건 충족 후 watch_days(10)거래일 안에 5일선 상향 돌파 → 🟢 알림, 추적 시작
-3) 추적 종목이 하락 기준선(20일선 -5%) 아래로 마감 → 🔴 알림 (따로 전송)
+1) 조건 (config.json "screen"): 주가 $40~$100, 직전 range_days(40)거래일
+   고가-저가 범위가 range_pct(10)% 이내로 횡보 + 당일 5일선 상향 돌파 → 🟢 알림
+2) 추적 종목이 하락 기준선(20일선 -5%) 아래로 마감 → 🔴 알림 (따로 전송)
    돌파 때 이미 기준선 아래였던 종목은, 기준선 위로 올라오기 전에는 돌파 가격 아래로 내려갈 때 알림
   python screen_rsi.py [--force] [--dry-run]
 """
@@ -16,12 +15,11 @@ import os
 import sys
 from datetime import datetime, time as dtime
 
-import numpy as np
 import pandas as pd
 
 import alert as al
 
-DEF = {"min_price": 5, "max_price": 40, "rsi_period": 14, "rsi_max": 30, "vol_days": 5, "watch_days": 10, "track_days": 60, "exit_pct": 5}
+DEF = {"min_price": 40, "max_price": 100, "range_days": 40, "range_pct": 10, "track_days": 60, "exit_pct": 5}
 SC = {**DEF, **al.CONFIG.get("screen", {})}
 STATE = al.ROOT / "state_screen.json"
 OUT = al.ROOT / "results" / "screen"
@@ -61,52 +59,43 @@ def universe() -> dict[str, str]:
     return names
 
 
-def download(symbols: list[str]) -> tuple[pd.DataFrame, pd.DataFrame]:
+def download(symbols: list[str]) -> pd.DataFrame:
     import yfinance as yf
 
-    closes, vols = [], []
+    closes = []
     for i in range(0, len(symbols), 400):
         chunk = symbols[i:i + 400]
-        raw = yf.download(chunk, period="6mo", interval="1d", group_by="ticker",
+        raw = yf.download(chunk, period="1y", interval="1d", group_by="ticker",
                           auto_adjust=True, threads=True, progress=False)
         lv = raw.columns.levels[0] if isinstance(raw.columns, pd.MultiIndex) else []
         closes.append(pd.DataFrame({s: raw[s]["Close"] for s in chunk if s in lv}))
-        vols.append(pd.DataFrame({s: raw[s]["Volume"] for s in chunk if s in lv}))
-    close, vol = pd.concat(closes, axis=1), pd.concat(vols, axis=1)
+    close = pd.concat(closes, axis=1)
     idx = pd.DatetimeIndex(close.index)
-    close.index = vol.index = idx.tz_localize(None) if idx.tz is not None else idx
-    return close.sort_index(), vol.sort_index()
+    close.index = idx.tz_localize(None) if idx.tz is not None else idx
+    return close.sort_index()
 
 
-def rsi(close: pd.DataFrame, n: int) -> pd.DataFrame:
-    """Wilder RSI."""
-    d = close.diff()
-    up = d.clip(lower=0).ewm(alpha=1 / n, adjust=False, min_periods=n).mean()
-    dn = (-d.clip(upper=0)).ewm(alpha=1 / n, adjust=False, min_periods=n).mean()
-    return 100 - 100 / (1 + up / dn)
-
-
-def setups(close: pd.DataFrame, vol: pd.DataFrame) -> pd.DataFrame:
-    """날짜×종목 매도 소진 여부: 가격대 + RSI 과매도 + 거래량 k일 연속 감소 + 거래량 < 20일 평균."""
-    k = SC["vol_days"]
-    r = rsi(close, SC["rsi_period"])
-    dec = (vol.diff() < 0).rolling(k - 1).sum() == k - 1
-    quiet = vol < vol.rolling(20).mean().shift(1)
+def setups(close: pd.DataFrame) -> pd.DataFrame:
+    """날짜×종목 매수 신호: 가격대 + 직전 range_days거래일 횡보(고저 범위 ≤range_pct%) + 당일 5일선 상향 돌파."""
+    rd = SC["range_days"]
+    hi = close.rolling(rd).max().shift(1)
+    lo = close.rolling(rd).min().shift(1)
+    rng_ok = ((hi - lo) / hi * 100 <= SC["range_pct"]) & hi.notna()
     band = (close >= SC["min_price"]) & (close <= SC["max_price"])
-    return band & (r <= SC["rsi_max"]) & dec & quiet & (vol > 0)
+    ma5 = close.rolling(5).mean()
+    cross = (close.shift(1) <= ma5.shift(1)) & (close > ma5)
+    return band & rng_ok & cross
 
 
 def fmt(d: str) -> str:
     return d[5:].replace("-", "/")
 
 
-def run_day(close, vol, st):
-    """오늘 기준 돌파·이탈 판정. st(active, alerted)를 갱신하고 (buys, exits, expired, watch) 반환."""
-    W = SC["watch_days"]
+def run_day(close: pd.DataFrame, st: dict):
+    """오늘 기준 돌파·이탈 판정. st(active, alerted)를 갱신하고 (day, buys, exits, expired) 반환."""
     day = close.index[-1].strftime("%Y-%m-%d")
-    su = setups(close, vol).iloc[-W - 1:]            # 오늘 포함 최근 W+1거래일
-    r = rsi(close, SC["rsi_period"])
-    ma5, ma20 = close.rolling(5).mean(), close.rolling(20).mean()
+    sig = setups(close)
+    ma20 = close.rolling(20).mean()
     active, alerted = st.setdefault("active", {}), st.setdefault("alerted", {})
 
     exits, expired = [], []
@@ -125,35 +114,30 @@ def run_day(close, vol, st):
                           **{f"e_{k}": v for k, v in p.items()}})
             del active[s]
 
-    watch, buys = {}, []
-    for s in su.columns[su.any()]:
-        sd = su.index[su[s]][-1]                      # 가장 최근 조건 충족일
-        sds = sd.strftime("%Y-%m-%d")
-        watch[s] = sds
-        c = close[s]
-        if s in active or alerted.get(s) == sds or pd.isna(c.iloc[-1]) or pd.isna(c.iloc[-2]):
+    buys = []
+    today_sig = sig.columns[sig.iloc[-1].fillna(False)] if len(sig) else []
+    for s in today_sig:
+        if s in active or alerted.get(s) == day:
             continue
-        if c.iloc[-2] <= ma5[s].iloc[-2] and c.iloc[-1] > ma5[s].iloc[-1]:
-            px = float(c.iloc[-1])
-            buys.append({"symbol": s, "price": px, "chg": (px / float(c.iloc[-2]) - 1) * 100,
-                         "ma5": float(ma5[s].iloc[-1]), "ma20": float(ma20[s].iloc[-1]),
-                         "rsi": float(r[s].iloc[-1]), "setup": sds, "setup_rsi": float(r[s].loc[sd]),
-                         "from_hi60": (px / float(c.iloc[-60:].max()) - 1) * 100})
-            active[s] = {"since": day, "price": round(px, 4), "setup": sds, "armed": bool(px >= ma20[s].iloc[-1] * (1 - SC["exit_pct"] / 100))}
-            alerted[s] = sds
+        c = close[s]
+        if pd.isna(c.iloc[-1]) or pd.isna(c.iloc[-2]):
+            continue
+        px, m20 = float(c.iloc[-1]), float(ma20[s].iloc[-1])
+        buys.append({"symbol": s, "price": px, "chg": (px / float(c.iloc[-2]) - 1) * 100,
+                     "ma20": m20, "from_hi60": (px / float(c.iloc[-60:].max()) - 1) * 100})
+        active[s] = {"since": day, "price": round(px, 4), "armed": bool(px >= m20 * (1 - SC["exit_pct"] / 100))}
+        alerted[s] = day
     buys.sort(key=lambda b: b["chg"], reverse=True)
-    return day, buys, exits, expired, watch
+    return day, buys, exits, expired
 
 
 def buy_message(day, buys, meta) -> str:
-    L = [f"🟢 매도 소진 후 5일선 돌파 {fmt(day)} (장 마감 기준)",
+    L = [f"🟢 횡보 후 5일선 돌파 {fmt(day)} (장 마감 기준)",
          f"섹터: S&P 500 시가총액 상위 2개 (Technology · Financial Services)",
-         f"조건: RSI({SC['rsi_period']}) ≤ {SC['rsi_max']} · 거래량 {SC['vol_days']}일 연속 감소 · 20일 평균 미만 · "
-         f"${SC['min_price']}~${SC['max_price']} → {SC['watch_days']}거래일 안에 5일선 돌파", ""]
+         f"조건: ${SC['min_price']}~${SC['max_price']} · 직전 {SC['range_days']}거래일 고저 범위 ≤{SC['range_pct']:g}% 횡보 → 5일선 상향 돌파", ""]
     for b in buys:
         L += [f"• {al.label(b['symbol'], meta)}",
-              f"   ${b['price']:.2f} ({b['chg']:+.1f}%)  5일선 ${b['ma5']:.2f}  20일선 ${b['ma20']:.2f}",
-              f"   조건 충족 {fmt(b['setup'])} (RSI {b['setup_rsi']:.0f}) → 현재 RSI {b['rsi']:.0f}  "
+              f"   ${b['price']:.2f} ({b['chg']:+.1f}%)  20일선 ${b['ma20']:.2f}  "
               f"60일 고점 대비 {b['from_hi60']:+.0f}%"]
     L += ["", "※ 반등을 보장하는 신호가 아니에요. 참고용으로만 보세요."]
     return "\n".join(L)
@@ -186,11 +170,10 @@ def main() -> int:
     names = universe()
     syms = sorted(set(names) | set(st.get("active", {})))
     print(f"대상 {len(syms)}종목")
-    close, vol = download(syms)
+    close = download(syms)
     close = close.dropna(how="all")
-    vol = vol.reindex(close.index)
-    day, buys, exits, expired, watch = run_day(close, vol, st)
-    print(f"기준일 {day} · 관찰 {len(watch)}종목: {', '.join(sorted(watch)) or '-'}")
+    day, buys, exits, expired = run_day(close, st)
+    print(f"기준일 {day}")
     print(f"돌파 {[b['symbol'] for b in buys]} · 이탈 {[e['symbol'] for e in exits]} · "
           f"종료 {[x[0] for x in expired]} · 추적 중 {sorted(st['active'])}")
 
@@ -204,7 +187,6 @@ def main() -> int:
     for m in msgs:                                   # 돌파와 이탈은 따로 전송
         al.send_telegram(m)
     OUT.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame({"symbol": list(watch), "setup": list(watch.values())}).to_csv(OUT / f"{day}_watch.csv", index=False)
     st.update(last_run=now.strftime("%Y-%m-%d"), last_day=day)
     STATE.write_text(json.dumps(st, indent=1), encoding="utf-8")
     al.META_PATH.write_text(json.dumps(meta, indent=1, sort_keys=True, ensure_ascii=False), encoding="utf-8")
