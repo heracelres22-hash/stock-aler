@@ -48,6 +48,9 @@ def universe() -> list[str]:
                 Q("gte", ["intradayprice", 1]),
                 Q("eq", ["sector", sector]),
                 Q("gte", ["intradaymarketcap", sr.SC["min_mktcap"]]),
+                Q("lte", ["peratio.lasttwelvemonths", sr.SC["max_per"]]),
+                Q("lte", ["totaldebtequity.lasttwelvemonths", sr.SC["max_debt_equity"]]),
+                Q("gte", ["returnonequity.lasttwelvemonths", sr.SC["min_roe"]]),
             ])
             res = yf.screen(q, sortField="dayvolume", sortAsc=False, size=250, offset=off)
             # SPAC 유닛/워런트/우선주/신탁 티커(대시 포함) 제외 — 정상 보통주만

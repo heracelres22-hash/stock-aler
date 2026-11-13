@@ -20,7 +20,8 @@ import pandas as pd
 import alert as al
 
 DEF = {"min_price": 40, "max_price": 100, "range_days": 40, "range_pct": 10, "track_days": 60,
-       "exit_pct": 5, "min_mktcap": 1_000_000_000}
+       "exit_pct": 5, "min_mktcap": 1_000_000_000,
+       "max_per": 25, "max_debt_equity": 150, "min_roe": 10}
 SC = {**DEF, **al.CONFIG.get("screen", {})}
 STATE = al.ROOT / "state_screen.json"
 OUT = al.ROOT / "results" / "screen"
@@ -50,6 +51,10 @@ def universe() -> dict[str, str]:
                 Q("lte", ["intradayprice", SC["max_price"]]),
                 Q("eq", ["sector", sector]),
                 Q("gte", ["intradaymarketcap", SC["min_mktcap"]]),
+                # 그레이엄/버핏식 퀄리티-가치 필터: 저평가 + 낮은 부채 + 높은 ROE
+                Q("lte", ["peratio.lasttwelvemonths", SC["max_per"]]),
+                Q("lte", ["totaldebtequity.lasttwelvemonths", SC["max_debt_equity"]]),
+                Q("gte", ["returnonequity.lasttwelvemonths", SC["min_roe"]]),
             ])
             res = yf.screen(q, sortField="dayvolume", sortAsc=False, size=250, offset=off)
             # SPAC 유닛/워런트/우선주/신탁 티커(대시 포함) 제외 — 정상 보통주만
@@ -137,7 +142,8 @@ def run_day(close: pd.DataFrame, st: dict):
 def buy_message(day, buys, meta) -> str:
     L = [f"🟢 횡보 후 5일선 돌파 {fmt(day)} (장 마감 기준)",
          f"섹터: S&P 500 시가총액 상위 2개 (Technology · Financial Services)",
-         f"조건: ${SC['min_price']}~${SC['max_price']} · 직전 {SC['range_days']}거래일 고저 범위 ≤{SC['range_pct']:g}% 횡보 → 5일선 상향 돌파", ""]
+         f"조건: ${SC['min_price']}~${SC['max_price']} · 직전 {SC['range_days']}거래일 고저 범위 ≤{SC['range_pct']:g}% 횡보 → 5일선 상향 돌파",
+         f"가치 필터: PER≤{SC['max_per']:g} · 부채비율≤{SC['max_debt_equity']:g}% · ROE≥{SC['min_roe']:g}%", ""]
     for b in buys:
         L += [f"• {al.label(b['symbol'], meta)}",
               f"   ${b['price']:.2f} ({b['chg']:+.1f}%)  20일선 ${b['ma20']:.2f}  "
