@@ -109,6 +109,69 @@ def trades(close, ent, ma20, start, armed: bool):
     return t.drop(columns=["j", "ei", "xi"])
 
 
+def live_trades(close, ent, ma20, start):
+    """현재 알림 규칙: 모든 매수 신호별로 매도일 계산.
+    기준선 = 20일선 × (1-EXIT_PCT). 기준선 위로 올라온 적 있으면 기준선 아래 마감 시 매도,
+    없으면(돌파 때 이미 기준선 아래) 돌파 가격 아래 마감 시 매도."""
+    C, E, M = close.values, ent.values, ma20.values * (1 - EXIT_PCT)
+    i0 = close.index.searchsorted(pd.Timestamp(start))
+    out, n = [], len(C)
+    for j in range(C.shape[1]):
+        for ei in np.flatnonzero(E[i0:, j]) + i0:
+            ep = C[ei, j]
+            if np.isnan(ep):
+                continue
+            arm, xi, xp, op = ep >= M[ei, j], n - 1, C[n - 1, j], True
+            for i in range(ei + 1, n):
+                p = C[i, j]
+                if np.isnan(p):
+                    xi, xp, op = i, C[i - 1, j], False; break
+                if not arm:
+                    if p >= M[i, j]:
+                        arm = True
+                    elif p < ep:
+                        xi, xp, op = i, p, False; break
+                elif p < M[i, j]:
+                    xi, xp, op = i, p, False; break
+            if np.isnan(xp):
+                xp = ep
+            out.append((j, ei, xi, ep, xp, op, bool(ep >= M[ei, j])))
+    t = pd.DataFrame(out, columns=["j", "ei", "xi", "entry", "exit", "open", "above_line"])
+    t["symbol"] = close.columns[t["j"]]
+    t["entry_date"], t["exit_date"] = close.index[t["ei"]], close.index[t["xi"]]
+    t["days"] = t["xi"] - t["ei"]
+    t["ret"] = t["exit"] * (1 - COST) / (t["entry"] / (1 - COST)) - 1
+    return t
+
+
+def slots(t, close, k, start):
+    """K칸 계좌: 신호마다 총자산/K 매수(칸이 차면 당일 상승률 순), 신호별 매도일에 매도."""
+    C = close.values
+    chg = close.pct_change(fill_method=None).values
+    i0 = close.index.searchsorted(pd.Timestamp(start))
+    by_day = {i: g for i, g in t.groupby("ei")}
+    cash, pos, eq, taken = 1.0, {}, [], []
+    val = lambda i, j: C[i, j] if not np.isnan(C[i, j]) else pos[j][3]
+    for i in range(i0, len(C)):
+        for j in [j for j, p in pos.items() if p[1] == i and not p[2]]:
+            cash += pos[j][0] * pos[j][4] * (1 - COST); del pos[j]
+        for j in pos:
+            if not np.isnan(C[i, j]):
+                pos[j][3] = C[i, j]
+        if i in by_day and len(pos) < k:
+            total = cash + sum(p[0] * val(i, j) for j, p in pos.items())
+            g = by_day[i]; g = g[~g["j"].isin(pos)]
+            g = g.assign(c=chg[i, g["j"]]).sort_values("c", ascending=False)
+            for r in g.head(k - len(pos)).itertuples():
+                amt = min(total / k, cash)
+                if amt <= 0:
+                    break
+                pos[r.j] = [amt * (1 - COST) / r.entry, r.xi, r.open, r.entry, r.exit]
+                cash -= amt; taken.append(r.Index)
+        eq.append(cash + sum(p[0] * val(i, j) for j, p in pos.items()))
+    return pd.Series(eq, index=close.index[i0:]), t.loc[taken]
+
+
 def ttable(t):
     rows = []
     for y, tr in list(t.groupby(t["entry_date"].dt.year)) + [("전체", t)]:
@@ -144,19 +207,13 @@ def main():
     n_sig = int(ent[ent.index >= bt.START].values.sum())
     print(f"매수 신호 {n_sig}건")
 
-    t1 = trades(close, ent, ma20, bt.START, armed=False)
-    t2 = trades(close, ent, ma20, bt.START, armed=True)
-    t1.to_csv(bt.OUT / "screen_bt_trades.csv", index=False)
-
-    sig = {"short": (ent, below)}
-    v = {"trend": False, "market": False, "rank": "day", "exit": "ma5"}
-    allok = pd.DataFrame(True, index=close.index, columns=close.columns)
+    t1 = live_trades(close, ent, ma20, bt.START)
+    t1.drop(columns=["j", "ei", "xi"]).to_csv(bt.OUT / "screen_bt_trades.csv", index=False)
     s_spy = spy[spy.index >= bt.START].dropna()
     yrs = (s_spy.index[-1] - s_spy.index[0]).days / 365.25
     summ, years = [], {}
     for k in (5, 10, 20):
-        pf.MAX_POS, pf.COST = k, COST
-        eq, tk = pf.run(v, close.astype(float), allok, sig, pd.Series(True, index=close.index), bt.START)
+        eq, tk = slots(t1, close.astype(float), k, bt.START)
         st = pf.stats(eq, tk, spy)
         tot = st.iloc[-1]
         eq.to_csv(bt.OUT / f"screen_bt_equity_{k}.csv")
@@ -169,18 +226,23 @@ def main():
     yt = pd.DataFrame(years); yt["SPY"] = st.set_index("연도")["SPY"]
     yt = yt.reset_index().rename(columns={"index": "연도"})
 
-    md = [f"# 매도 소진 후 5일선 돌파 백테스트 ({bt.START[:4]} ~ {close.index[-1].date()})", "",
+    lo, hi = t1[~t1.above_line], t1[t1.above_line]
+    md = [f"# 매도 소진 후 5일선 돌파 백테스트 — 현재 알림 규칙 ({bt.START[:4]} ~ {close.index[-1].date()})", "",
           "- 관찰: 주가 $5~$40, RSI(14)≤30, 거래량 5일 연속 감소, 거래량 < 20일 평균",
           f"- 매수: 조건 충족 후 {W}거래일 안 첫 5일선 돌파일 종가",
-          f"- 매도: 매수 다음 날부터 종가 < 20일선 × {1-EXIT_PCT:.2f} 인 날 종가",
+          f"- 매도: 종가 < 20일선 × {1-EXIT_PCT:.2f} (기준선). 돌파 때 이미 기준선 아래였으면, 기준선 위로 "
+          "올라오기 전에는 돌파 가격 아래로 마감 시 매도",
           f"- 후보군: 현재 상장 종목 {close.shape[1]}개 (상장폐지 종목 없음 → 생존 편향), 비용 매수·매도 각 0.1%", "",
           "## 계좌 수익률 (K칸: 신호마다 총자산/K 매수, 칸이 차면 당일 상승률 순)", ""]
     md += mdt(pd.DataFrame(summ)) + ["", "## 연도별 계좌 수익률", ""] + mdt(yt)
-    md += ["", "## 거래별 통계 — 요청 규칙 (20일선 -5% 이탈 시 매도)", "",
-           f"매수 다음 날 바로 매도된 거래: {(t1.days == 1).mean()*100:.1f}%", ""] + mdt(ttable(t1))
-    md += ["", "## 거래별 통계 — 비교: 20일선 위로 올라선 뒤부터 같은 매도 규칙 적용 (60일 못 오르면 종료)", ""] + mdt(ttable(t2))
+    md += ["", "## 거래별 통계 (모든 신호)", "",
+           f"매수 다음 날 바로 매도: {(t1.days == 1).mean()*100:.1f}% · "
+           f"돌파 때 기준선 아래였던 신호: {len(lo)/len(t1)*100:.0f}% "
+           f"(승률 {(lo.ret>0).mean()*100:.0f}%, 평균 {lo.ret.mean()*100:+.1f}%) · "
+           f"기준선 위였던 신호: 승률 {(hi.ret>0).mean()*100:.0f}%, 평균 {hi.ret.mean()*100:+.1f}%", ""]
+    md += mdt(ttable(t1))
     best, worst = t1.nlargest(8, "ret"), t1.nsmallest(8, "ret")
-    md += ["", "## 최고/최저 거래 (요청 규칙)", ""]
+    md += ["", "## 최고/최저 거래", ""]
     md += [f"- {r.symbol} {r.entry_date.date()} → {r.exit_date.date()} ({r.days}일) {r.ret*100:+.0f}%"
            for r in pd.concat([best, worst]).itertuples()]
     (bt.OUT / "screen_bt.md").write_text("\n".join(md), encoding="utf-8")
