@@ -6,6 +6,20 @@
   "exit_ma_days": 20,
   "long_enabled": false,
   "long_ma_weeks": 40,
-  "exchanges": ["NMS", "NGM", "NCM", "NYQ", "ASE"],
-  "intraday_note": true
+  "exchanges": [
+    "NMS",
+    "NGM",
+    "NCM",
+    "NYQ",
+    "ASE"
+  ],
+  "intraday_note": true,
+  "screen": {
+    "min_price": 5,
+    "max_price": 40,
+    "rsi_period": 14,
+    "rsi_max": 30,
+    "vol_days": 5,
+    "max_list": 40
+  }
 }
