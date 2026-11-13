@@ -334,7 +334,7 @@ def main():
 
 
 def main_range():
-    """횡보(40일 고저 범위 ±RANGE_PCT%) 후 5일선 돌파 · 가격대별 비교."""
+    """횡보 일수(40/60/90/120일) × 가격대($5~40/$40~100/$100~200) 비교."""
     bt.OUT.mkdir(exist_ok=True)
     syms = universe()
     close, vol = load(syms + ["SPY"])
@@ -344,61 +344,52 @@ def main_range():
 
     ma5, ma20 = close.rolling(5).mean(), close.rolling(20).mean()
     cross = (close.shift(1) <= ma5.shift(1)) & (close > ma5)
-
-    # 횡보 조건: 직전 RANGE_DAYS일 고가-저가 범위 <= RANGE_PCT%
-    hi = close.rolling(RANGE_DAYS).max().shift(1)
-    lo = close.rolling(RANGE_DAYS).min().shift(1)
-    rng_cond = ((hi - lo) / hi * 100 <= RANGE_PCT) & hi.notna()
-
     ndays = (close.index >= bt.START).sum()
     s_spy = spy[spy.index >= bt.START].dropna()
     yrs = (s_spy.index[-1] - s_spy.index[0]).days / 365.25
-    rows, years = [], {}
-
-    for lo_p, hi_p in RANGE_BANDS:
-        name = f"${lo_p}~{hi_p}" if hi_p else f"${lo_p} 이상"
-        band = (raw >= lo_p) & ((raw <= hi_p) if hi_p else True)
-        # 횡보 + 가격대 + 5일선 돌파
-        sig = (cross & band & rng_cond).fillna(False)
-        t = live_trades(close, sig, ma20, bt.START)
-        t.drop(columns=["j", "ei", "xi"]).to_csv(bt.OUT / f"range_trades_{lo_p}.csv", index=False)
-        row = {"가격대": name, "거래수": len(t), "하루신호": len(t) / ndays,
-               "승률": (t.ret > 0).mean() * 100, "평균수익": t.ret.mean() * 100,
-               "중간값": t.ret.median() * 100,
-               "평균이익": t.ret[t.ret > 0].mean() * 100,
-               "평균손실": t.ret[t.ret <= 0].mean() * 100,
-               "평균보유일": t.days.mean()}
-        for k in (10, 20):
-            eq, tk = slots(t, close.astype(float), k, bt.START)
-            st = pf.stats(eq, tk, spy)
-            row[f"{k}칸 CAGR"], row[f"{k}칸 낙폭"] = st.iloc[-1]["CAGR"], st.iloc[-1]["MDD"]
-            if k == 20:
-                years[name] = st.set_index("연도")["수익률"]
-                spy_y = st.set_index("연도")["SPY"]
-        rows.append(row)
-        print(row, flush=True)
-
-    yt = pd.DataFrame(years); yt["SPY"] = spy_y
-    yt = yt.reset_index().rename(columns={"index": "연도"})
     spy_cagr = ((s_spy.iloc[-1] / s_spy.iloc[0]) ** (1 / yrs) - 1) * 100
     spy_mdd  = ((s_spy / s_spy.cummax()) - 1).min() * 100
-    df = pd.DataFrame(rows); cols = list(df.columns)
-    fmt = {"거래수": "{:.0f}", "하루신호": "{:.0f}", "평균보유일": "{:.1f}", "승률": "{:.1f}%"}
 
-    md = [f"# 횡보 후 5일선 돌파 · 가격대별 비교 ({bt.START[:4]} ~ {close.index[-1].date()})", "",
-          f"- 횡보 조건: 직전 {RANGE_DAYS}거래일 고가-저가 범위 ≤ {RANGE_PCT:.0f}% (에너지 응축 구간)",
+    DAYS_LIST = [40, 60, 90, 120]
+    fmt_num = {"거래수": "{:.0f}", "하루신호": "{:.1f}", "평균보유일": "{:.1f}", "승률": "{:.1f}%"}
+    md = [f"# 횡보 일수별 비교 (가격대 × 횡보 기간) ({bt.START[:4]} ~ {close.index[-1].date()})", "",
+          f"- 횡보 조건: 직전 N거래일 고가-저가 범위 ≤ {RANGE_PCT:.0f}%",
           "- 매수: 5일선 상향 돌파일 종가 · 매도: 종가 < 20일선 × 0.95",
           f"- 후보군: 현재 상장 종목 {close.shape[1]}개 (생존 편향), 비용 매수·매도 각 0.1%",
-          f"- SPY 보유: 연평균 {spy_cagr:+.1f}%, 최대낙폭 {spy_mdd:.1f}%", "",
-          "| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
-    for _, r in df.iterrows():
-        md.append("| " + " | ".join(str(r[c]) if c == cols[0] else ("-" if pd.isna(r[c]) else
-                   fmt.get(c, "{:+.1f}%").format(r[c])) for c in cols) + " |")
+          f"- SPY 보유: 연평균 {spy_cagr:+.1f}%, 최대낙폭 {spy_mdd:.1f}%", ""]
 
-    md += ["", "## 연도별 계좌 수익률 (20칸)", ""]
-    md += mdt(yt)
-    (bt.OUT / "range_bands.md").write_text("\n".join(md), encoding="utf-8")
-    print("→ results/range_bands.md")
+    for lo_p, hi_p in RANGE_BANDS:
+        band_name = f"${lo_p}~{hi_p}" if hi_p else f"${lo_p} 이상"
+        band = (raw >= lo_p) & ((raw <= hi_p) if hi_p else True)
+        rows = []
+        for rd in DAYS_LIST:
+            hi_r = close.rolling(rd).max().shift(1)
+            lo_r = close.rolling(rd).min().shift(1)
+            rng_cond = ((hi_r - lo_r) / hi_r * 100 <= RANGE_PCT) & hi_r.notna()
+            sig = (cross & band & rng_cond).fillna(False)
+            t = live_trades(close, sig, ma20, bt.START)
+            row = {"횡보일수": f"{rd}일", "거래수": len(t), "하루신호": len(t) / ndays,
+                   "승률": (t.ret > 0).mean() * 100, "평균수익": t.ret.mean() * 100,
+                   "평균이익": t.ret[t.ret > 0].mean() * 100,
+                   "평균손실": t.ret[t.ret <= 0].mean() * 100,
+                   "평균보유일": t.days.mean()}
+            for k in (10, 20):
+                eq, tk = slots(t, close.astype(float), k, bt.START)
+                st = pf.stats(eq, tk, spy)
+                row[f"{k}칸 CAGR"], row[f"{k}칸 낙폭"] = st.iloc[-1]["CAGR"], st.iloc[-1]["MDD"]
+            rows.append(row)
+            print(f"  {band_name} {rd}일: {row}", flush=True)
+
+        df = pd.DataFrame(rows); cols = list(df.columns)
+        md += [f"## 가격대 {band_name}", "",
+               "| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
+        for _, r in df.iterrows():
+            md.append("| " + " | ".join(str(r[c]) if c == cols[0] else ("-" if pd.isna(r[c]) else
+                       fmt_num.get(c, "{:+.1f}%").format(r[c])) for c in cols) + " |")
+        md.append("")
+
+    (bt.OUT / "range_days.md").write_text("\n".join(md), encoding="utf-8")
+    print("→ results/range_days.md")
 
 
 if __name__ == "__main__":
