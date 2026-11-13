@@ -4,7 +4,7 @@ on:
   workflow_dispatch:      # Actions 탭에서 수동 실행
     inputs:
       target:
-        description: "all = 전체, ma5_20 = 5일선 돌파/20일선 이탈, screen = 매도 소진 후 반등, plain = $5~40 5일선 돌파만"
+        description: "all = 전체, ma5_20 = 5일선 돌파/20일선 이탈, screen = 매도 소진 후 반등, plain = $5~40 5일선 돌파만, bands = 가격대별 비교"
         default: "all"
       vol_avg:
         description: "ma5_20 거래량 순위 기준 (1=당일, 5=5일 평균)"
@@ -35,12 +35,13 @@ jobs:
           python backtest.py
           python portfolio.py
           python sp500_portfolio.py
-      - if: ${{ inputs.target != 'screen' && inputs.target != 'plain' }}
+      - if: ${{ inputs.target != 'screen' && inputs.target != 'plain' && inputs.target != 'bands' }}
         run: python backtest_ma5_20.py
-      - if: ${{ inputs.target == 'screen' || inputs.target == 'plain' }}
+      - if: ${{ inputs.target == 'screen' || inputs.target == 'plain' || inputs.target == 'bands' }}
         run: python backtest_screen.py
         env:
           PLAIN: ${{ inputs.target == 'plain' && '1' || '' }}
+          BANDS: ${{ inputs.target == 'bands' && '1' || '' }}
       - name: Save results
         run: |
           git config user.name "github-actions[bot]"

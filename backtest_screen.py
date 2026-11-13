@@ -22,6 +22,8 @@ import screen_rsi as sr
 
 COST, EXIT_PCT = 0.001, 0.05
 W = sr.SC["watch_days"]
+RAW = None   # 당시 실제 주가 (분할 조정 전)
+BANDS = [(5, 40), (40, 100), (100, 200), (200, 500), (500, None)]
 PLAIN = os.environ.get("PLAIN") == "1"   # 1이면 RSI·거래량 조건 없이 가격대 + 5일선 돌파만
 TAG = "_plain" if PLAIN else ""
 
@@ -46,19 +48,26 @@ def universe() -> list[str]:
 def load(symbols):
     import yfinance as yf
 
-    cs, vs = [], []
+    cs, vs, rs = [], [], []
     for i in range(0, len(symbols), 500):
         chunk = symbols[i:i + 500]
         raw = yf.download(chunk, start=bt.WARMUP_START, interval="1d", group_by="ticker",
-                          auto_adjust=True, threads=True, progress=False)
+                          auto_adjust=False, actions=True, threads=True, progress=False)
         lv = raw.columns.levels[0]
-        c = pd.DataFrame({s: raw[s]["Close"] for s in chunk if s in lv}).dropna(axis=1, how="all")
+        c = pd.DataFrame({s: raw[s]["Adj Close"] for s in chunk if s in lv}).dropna(axis=1, how="all")
         cs.append(c.astype("float32"))
+        # 당시 실제 거래 가격 = 분할 조정 종가 × 이후 분할 비율 누적
+        sp = pd.DataFrame({s: raw[s]["Stock Splits"] for s in c.columns}).fillna(0).replace(0, 1.0)
+        fut = sp[::-1].cumprod()[::-1].shift(-1).fillna(1.0)
+        rs.append((pd.DataFrame({s: raw[s]["Close"] for s in c.columns}) * fut).astype("float32"))
         vs.append(pd.DataFrame({s: raw[s]["Volume"] for s in c.columns}).astype("float32"))
         print(f"  다운로드 {min(i + 500, len(symbols))}/{len(symbols)}", flush=True)
     close, vol = pd.concat(cs, axis=1), pd.concat(vs, axis=1)
     idx = pd.DatetimeIndex(close.index)
-    close.index = vol.index = idx.tz_localize(None) if idx.tz is not None else idx
+    global RAW
+    RAW = pd.concat(rs, axis=1)
+    close.index = vol.index = RAW.index = idx.tz_localize(None) if idx.tz is not None else idx
+    RAW = RAW.sort_index()
     return close.sort_index(), vol.sort_index()
 
 
@@ -202,6 +211,56 @@ def mdt(df):
     return out
 
 
+def main_bands():
+    """가격대별 비교: 당시 실제 주가 기준 가격대 + 5일선 돌파 매수, 현재 알림 매도 규칙."""
+    bt.OUT.mkdir(exist_ok=True)
+    syms = universe()
+    close, vol = load(syms + ["SPY"])
+    spy = close.pop("SPY").astype(float)
+    raw = RAW.reindex(columns=close.columns) if RAW is not None else close
+    print(f"가격 데이터 {close.shape[1]}종목, {close.index[0].date()} ~ {close.index[-1].date()}")
+    ma5, ma20 = close.rolling(5).mean(), close.rolling(20).mean()
+    cross = (close.shift(1) <= ma5.shift(1)) & (close > ma5)
+    ndays = (close.index >= bt.START).sum()
+    s_spy = spy[spy.index >= bt.START].dropna()
+    yrs = (s_spy.index[-1] - s_spy.index[0]).days / 365.25
+    rows, years = [], {}
+    for lo, hi in BANDS:
+        name = f"${lo}~{hi}" if hi else f"${lo} 이상"
+        band = (raw >= lo) & ((raw <= hi) if hi else True)
+        t = live_trades(close, (cross & band).fillna(False), ma20, bt.START)
+        t.drop(columns=["j", "ei", "xi"]).to_csv(bt.OUT / f"bands_trades_{lo}.csv", index=False)
+        row = {"가격대": name, "거래수": len(t), "하루신호": len(t) / ndays, "승률": (t.ret > 0).mean() * 100,
+               "평균수익": t.ret.mean() * 100, "중간값": t.ret.median() * 100,
+               "평균이익": t.ret[t.ret > 0].mean() * 100, "평균손실": t.ret[t.ret <= 0].mean() * 100,
+               "평균보유일": t.days.mean()}
+        for k in (10, 20):
+            eq, tk = slots(t, close.astype(float), k, bt.START)
+            st = pf.stats(eq, tk, spy)
+            row[f"{k}칸 CAGR"], row[f"{k}칸 낙폭"] = st.iloc[-1]["CAGR"], st.iloc[-1]["MDD"]
+            if k == 20:
+                years[name] = st.set_index("연도")["수익률"]
+                spy_y = st.set_index("연도")["SPY"]
+        rows.append(row)
+        print(row, flush=True)
+    yt = pd.DataFrame(years); yt["SPY"] = spy_y
+    yt = yt.reset_index().rename(columns={"index": "연도"})
+    spy_cagr = ((s_spy.iloc[-1] / s_spy.iloc[0]) ** (1 / yrs) - 1) * 100
+    fmt = {"거래수": "{:.0f}", "하루신호": "{:.0f}", "평균보유일": "{:.1f}", "승률": "{:.1f}%"}
+    df = pd.DataFrame(rows); cols = list(df.columns)
+    md = [f"# 가격대별 비교: 5일선 돌파 매수 ({bt.START[:4]} ~ {close.index[-1].date()})", "",
+          "- 조건: 가격대(당시 실제 주가, 주식 분할 반영 전)만 적용 · RSI·거래량 조건 없음",
+          "- 매수: 5일선 상향 돌파일 종가 · 매도: 종가 < 20일선 × 0.95 (돌파 때 이미 그 아래였으면 돌파 가격 아래로 마감 시)",
+          f"- 후보군: 현재 상장 종목 {close.shape[1]}개 (생존 편향), 비용 매수·매도 각 0.1%",
+          f"- SPY 보유: 연평균 {spy_cagr:+.1f}%, 최대낙폭 {((s_spy / s_spy.cummax()) - 1).min() * 100:.1f}%", "",
+          "| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
+    for _, r in df.iterrows():
+        md.append("| " + " | ".join(str(r[c]) if c == "가격대" else fmt.get(c, "{:+.1f}%").format(r[c]) for c in cols) + " |")
+    md += ["", "## 연도별 계좌 수익률 (20칸)", ""] + mdt(yt)
+    (bt.OUT / "bands.md").write_text("\n".join(md), encoding="utf-8")
+    print("\n".join(md))
+
+
 def main():
     bt.OUT.mkdir(exist_ok=True)
     syms = universe()
@@ -263,4 +322,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main_bands() if os.environ.get("BANDS") == "1" else main()
