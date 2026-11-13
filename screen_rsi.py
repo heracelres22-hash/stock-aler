@@ -19,7 +19,8 @@ import pandas as pd
 
 import alert as al
 
-DEF = {"min_price": 40, "max_price": 100, "range_days": 40, "range_pct": 10, "track_days": 60, "exit_pct": 5}
+DEF = {"min_price": 40, "max_price": 100, "range_days": 40, "range_pct": 10, "track_days": 60,
+       "exit_pct": 5, "min_mktcap": 1_000_000_000}
 SC = {**DEF, **al.CONFIG.get("screen", {})}
 STATE = al.ROOT / "state_screen.json"
 OUT = al.ROOT / "results" / "screen"
@@ -48,9 +49,11 @@ def universe() -> dict[str, str]:
                 Q("gte", ["intradayprice", SC["min_price"]]),
                 Q("lte", ["intradayprice", SC["max_price"]]),
                 Q("eq", ["sector", sector]),
+                Q("gte", ["intradaymarketcap", SC["min_mktcap"]]),
             ])
             res = yf.screen(q, sortField="dayvolume", sortAsc=False, size=250, offset=off)
-            quotes = [x for x in res.get("quotes", []) if x.get("symbol")]
+            # SPAC 유닛/워런트/우선주/신탁 티커(대시 포함) 제외 — 정상 보통주만
+            quotes = [x for x in res.get("quotes", []) if x.get("symbol") and "-" not in x["symbol"]]
             for x in quotes:
                 names[x["symbol"]] = x.get("longName") or x.get("shortName") or ""
             if len(quotes) < 250:

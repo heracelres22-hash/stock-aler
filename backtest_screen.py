@@ -47,9 +47,11 @@ def universe() -> list[str]:
                 Q("is-in", ["exchange", *al.CONFIG["exchanges"]]),
                 Q("gte", ["intradayprice", 1]),
                 Q("eq", ["sector", sector]),
+                Q("gte", ["intradaymarketcap", sr.SC["min_mktcap"]]),
             ])
             res = yf.screen(q, sortField="dayvolume", sortAsc=False, size=250, offset=off)
-            qs = [x["symbol"] for x in res.get("quotes", []) if x.get("symbol")]
+            # SPAC 유닛/워런트/우선주/신탁 티커(대시 포함) 제외 — 정상 보통주만
+            qs = [x["symbol"] for x in res.get("quotes", []) if x.get("symbol") and "-" not in x["symbol"]]
             out += qs
             if len(qs) < 250:
                 break
