@@ -10,6 +10,8 @@ python backtest_screen.py → results/screen_bt.md
 """
 from __future__ import annotations
 
+import os
+
 import numpy as np
 import pandas as pd
 
@@ -20,6 +22,8 @@ import screen_rsi as sr
 
 COST, EXIT_PCT = 0.001, 0.05
 W = sr.SC["watch_days"]
+PLAIN = os.environ.get("PLAIN") == "1"   # 1이면 RSI·거래량 조건 없이 가격대 + 5일선 돌파만
+TAG = "_plain" if PLAIN else ""
 
 
 def universe() -> list[str]:
@@ -59,6 +63,10 @@ def load(symbols):
 
 
 def entries(close, vol):
+    if PLAIN:
+        ma5 = close.rolling(5).mean()
+        band = (close >= sr.SC["min_price"]) & (close <= sr.SC["max_price"])
+        return ((close.shift(1) <= ma5.shift(1)) & (close > ma5) & band).fillna(False)
     su = sr.setups(close, vol).values
     ma5 = close.rolling(5).mean()
     cross = ((close.shift(1) <= ma5.shift(1)) & (close > ma5)).values
@@ -117,9 +125,10 @@ def live_trades(close, ent, ma20, start):
     i0 = close.index.searchsorted(pd.Timestamp(start))
     out, n = [], len(C)
     for j in range(C.shape[1]):
+        held_until = -1
         for ei in np.flatnonzero(E[i0:, j]) + i0:
             ep = C[ei, j]
-            if np.isnan(ep):
+            if np.isnan(ep) or ei <= held_until:   # 추적 중인 종목의 재돌파는 알림 없음
                 continue
             arm, xi, xp, op = ep >= M[ei, j], n - 1, C[n - 1, j], True
             for i in range(ei + 1, n):
@@ -136,6 +145,7 @@ def live_trades(close, ent, ma20, start):
             if np.isnan(xp):
                 xp = ep
             out.append((j, ei, xi, ep, xp, op, bool(ep >= M[ei, j])))
+            held_until = xi
     t = pd.DataFrame(out, columns=["j", "ei", "xi", "entry", "exit", "open", "above_line"])
     t["symbol"] = close.columns[t["j"]]
     t["entry_date"], t["exit_date"] = close.index[t["ei"]], close.index[t["xi"]]
@@ -208,7 +218,7 @@ def main():
     print(f"매수 신호 {n_sig}건")
 
     t1 = live_trades(close, ent, ma20, bt.START)
-    t1.drop(columns=["j", "ei", "xi"]).to_csv(bt.OUT / "screen_bt_trades.csv", index=False)
+    t1.drop(columns=["j", "ei", "xi"]).to_csv(bt.OUT / f"screen_bt{TAG}_trades.csv", index=False)
     s_spy = spy[spy.index >= bt.START].dropna()
     yrs = (s_spy.index[-1] - s_spy.index[0]).days / 365.25
     summ, years = [], {}
@@ -216,7 +226,7 @@ def main():
         eq, tk = slots(t1, close.astype(float), k, bt.START)
         st = pf.stats(eq, tk, spy)
         tot = st.iloc[-1]
-        eq.to_csv(bt.OUT / f"screen_bt_equity_{k}.csv")
+        eq.to_csv(bt.OUT / f"screen_bt{TAG}_equity_{k}.csv")
         summ.append({"방식": f"{k}칸 (한 종목 {100/k:.0f}%)", "누적수익": tot["수익률"], "CAGR": tot["CAGR"],
                      "최대낙폭": tot["MDD"], "거래수": tot["거래수"], "승률": tot["승률"]})
         years[f"{k}칸"] = st.set_index("연도")["수익률"]
@@ -228,8 +238,9 @@ def main():
 
     lo, hi = t1[~t1.above_line], t1[t1.above_line]
     md = [f"# 매도 소진 후 5일선 돌파 백테스트 — 현재 알림 규칙 ({bt.START[:4]} ~ {close.index[-1].date()})", "",
-          "- 관찰: 주가 $5~$40, RSI(14)≤30, 거래량 5일 연속 감소, 거래량 < 20일 평균",
-          f"- 매수: 조건 충족 후 {W}거래일 안 첫 5일선 돌파일 종가",
+          *(["- 조건: 주가 $5~$40 (RSI·거래량 조건 없음)", "- 매수: 5일선 상향 돌파일 종가"] if PLAIN else
+            ["- 관찰: 주가 $5~$40, RSI(14)≤30, 거래량 5일 연속 감소, 거래량 < 20일 평균",
+             f"- 매수: 조건 충족 후 {W}거래일 안 첫 5일선 돌파일 종가"]),
           f"- 매도: 종가 < 20일선 × {1-EXIT_PCT:.2f} (기준선). 돌파 때 이미 기준선 아래였으면, 기준선 위로 "
           "올라오기 전에는 돌파 가격 아래로 마감 시 매도",
           f"- 후보군: 현재 상장 종목 {close.shape[1]}개 (상장폐지 종목 없음 → 생존 편향), 비용 매수·매도 각 0.1%", "",
@@ -241,11 +252,13 @@ def main():
            f"(승률 {(lo.ret>0).mean()*100:.0f}%, 평균 {lo.ret.mean()*100:+.1f}%) · "
            f"기준선 위였던 신호: 승률 {(hi.ret>0).mean()*100:.0f}%, 평균 {hi.ret.mean()*100:+.1f}%", ""]
     md += mdt(ttable(t1))
+    per_day = t1.groupby("ei").size()
+    md += ["", f"하루 평균 신호 {len(t1) / (len(close.index[close.index >= bt.START])):.0f}건 (최대 {per_day.max()}건)"]
     best, worst = t1.nlargest(8, "ret"), t1.nsmallest(8, "ret")
     md += ["", "## 최고/최저 거래", ""]
     md += [f"- {r.symbol} {r.entry_date.date()} → {r.exit_date.date()} ({r.days}일) {r.ret*100:+.0f}%"
            for r in pd.concat([best, worst]).itertuples()]
-    (bt.OUT / "screen_bt.md").write_text("\n".join(md), encoding="utf-8")
+    (bt.OUT / f"screen_bt{TAG}.md").write_text("\n".join(md), encoding="utf-8")
     print("\n".join(md))
 
 
