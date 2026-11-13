@@ -1,10 +1,9 @@
 name: stock-alert
 
 on:
-  schedule:
-    # 미국 정규장(서머타임/표준시 모두 포함) 월~금, 30분 간격. 시간은 UTC 기준.
-    # 장 시간 여부는 alert.py가 뉴욕 시간으로 다시 확인합니다.
-    - cron: "*/30 13-21 * * 1-5"
+  # 예약 실행 꺼둠 (거래량 상위 10 알림). 다시 켜려면 아래 주석을 해제하세요.
+  # schedule:
+  #   - cron: "*/30 13-21 * * 1-5"
   workflow_dispatch: {}   # Actions 탭에서 수동 실행 (장 시간과 무관하게 실행)
 
 permissions:
