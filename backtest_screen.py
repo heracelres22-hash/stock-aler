@@ -29,19 +29,27 @@ TAG = "_plain" if PLAIN else ""
 
 
 def universe() -> list[str]:
+    """S&P 500 시가총액 상위 2개 섹터(Technology + Financial Services) 미국 정규 거래소 전 종목."""
     import yfinance as yf
     from yfinance import EquityQuery as Q
 
-    q = Q("and", [Q("eq", ["region", "us"]), Q("is-in", ["exchange", *al.CONFIG["exchanges"]]),
-                  Q("gte", ["intradayprice", 1])])
-    out, off = [], 0
-    while off < 9000:
-        res = yf.screen(q, sortField="dayvolume", sortAsc=False, size=250, offset=off)
-        qs = [x["symbol"] for x in res.get("quotes", []) if x.get("symbol")]
-        out += qs
-        if len(qs) < 250:
-            break
-        off += 250
+    TOP_SECTORS = ["Technology", "Financial Services"]
+    out: list[str] = []
+    for sector in TOP_SECTORS:
+        off = 0
+        while off < 9000:
+            q = Q("and", [
+                Q("eq", ["region", "us"]),
+                Q("is-in", ["exchange", *al.CONFIG["exchanges"]]),
+                Q("gte", ["intradayprice", 1]),
+                Q("eq", ["sector", sector]),
+            ])
+            res = yf.screen(q, sortField="dayvolume", sortAsc=False, size=250, offset=off)
+            qs = [x["symbol"] for x in res.get("quotes", []) if x.get("symbol")]
+            out += qs
+            if len(qs) < 250:
+                break
+            off += 250
     return sorted(set(out))
 
 
