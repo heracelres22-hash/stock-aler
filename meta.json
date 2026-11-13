@@ -7,9 +7,21 @@
   "name": "The AES Corporation",
   "sector": "Utilities"
  },
+ "AHL-PE": {
+  "name": "Aspen Insurance Holdings Limited",
+  "sector": "Financial Services"
+ },
  "AIIO": {
   "name": "Robo.ai Inc.",
   "sector": "Technology"
+ },
+ "ALPXU": {
+  "name": "Alpex Acquisition Corporation",
+  "sector": "Financial Services"
+ },
+ "AMACU": {
+  "name": "AMR Resources Acquisition Corp",
+  "sector": "Financial Services"
  },
  "ANIK": {
   "name": "Anika Therapeutics, Inc.",
@@ -23,6 +35,14 @@
   "name": "Amphenol Corporation",
   "sector": "Technology"
  },
+ "APMC": {
+  "name": "AmperCap Acquisition Company",
+  "sector": "Financial Services"
+ },
+ "APMCU": {
+  "name": "AmperCap Acquisition Company",
+  "sector": "Financial Services"
+ },
  "ASTS": {
   "name": "AST SpaceMobile, Inc.",
   "sector": "Technology"
@@ -34,6 +54,10 @@
  "AXTI": {
   "name": "AXT, Inc.",
   "sector": "Technology"
+ },
+ "BACCU": {
+  "name": "Blue Acquisition Corp.",
+  "sector": "Financial Services"
  },
  "BDSX": {
   "name": "Biodesix, Inc.",
@@ -50,6 +74,26 @@
  "BKR": {
   "name": "Baker Hughes Company",
   "sector": "Energy"
+ },
+ "BLRKU": {
+  "name": "Bluerock Acquisition Corp.",
+  "sector": "Financial Services"
+ },
+ "BML-PG": {
+  "name": "Bank of America Corporation",
+  "sector": "Financial Services"
+ },
+ "BRKH": {
+  "name": "Burtech Acquisition Corp II",
+  "sector": "Financial Services"
+ },
+ "BRKHU": {
+  "name": "Burtech Acquisition Corp II",
+  "sector": "Financial Services"
+ },
+ "BRTMU": {
+  "name": "B&R Technology Merger Corp.",
+  "sector": "Financial Services"
  },
  "CCL": {
   "name": "Carnival Corporation Ltd.",
@@ -91,6 +135,18 @@
   "name": "Dow Inc.",
   "sector": "Basic Materials"
  },
+ "ECCC": {
+  "name": "Eagle Point Credit Company",
+  "sector": "Financial Services"
+ },
+ "EGHAU": {
+  "name": "EGH Acquisition Corp.",
+  "sector": "Financial Services"
+ },
+ "EVOX": {
+  "name": "Evolution Global Acquisition Corp",
+  "sector": "Financial Services"
+ },
  "FCX": {
   "name": "Freeport-McMoRan Inc.",
   "sector": "Basic Materials"
@@ -103,9 +159,21 @@
   "name": "Fox Corporation",
   "sector": "Communication Services"
  },
+ "FVAV": {
+  "name": "Fortress Value Acquisition Corp. V",
+  "sector": "Financial Services"
+ },
+ "FWAC": {
+  "name": "Futurewave Acquisition Corporation",
+  "sector": "Financial Services"
+ },
  "GEN": {
   "name": "Gen Digital Inc.",
   "sector": "Technology"
+ },
+ "GPAT": {
+  "name": "GP-Act III Acquisition Corp.",
+  "sector": "Financial Services"
  },
  "HOOD": {
   "name": "Robinhood Markets, Inc.",
@@ -123,12 +191,20 @@
   "name": "Host Hotels & Resorts, Inc.",
   "sector": "Real Estate"
  },
+ "IPVV": {
+  "name": "InterPrivate Investment Partners V, Inc.",
+  "sector": "Financial Services"
+ },
  "IREN": {
   "name": "IREN Limited",
   "sector": "Financial Services"
  },
  "IVZ": {
   "name": "Invesco Ltd.",
+  "sector": "Financial Services"
+ },
+ "KBONU": {
+  "name": "Karbon Capital Partners Corp.",
   "sector": "Financial Services"
  },
  "KDP": {
@@ -139,13 +215,25 @@
   "name": "KeyCorp",
   "sector": "Financial Services"
  },
+ "KEY-PI": {
+  "name": "KeyCorp",
+  "sector": "Financial Services"
+ },
  "KIM": {
   "name": "Kimco Realty Corporation",
   "sector": "Real Estate"
  },
+ "KPET-UN": {
+  "name": "KPET Ultra Paceline Corporation",
+  "sector": "Financial Services"
+ },
  "KRT": {
   "name": "Karat Packaging Inc.",
   "sector": "Consumer Cyclical"
+ },
+ "LTGRU": {
+  "name": "Long Table Growth Corp.",
+  "sector": "Financial Services"
  },
  "MCHP": {
   "name": "Microchip Technology Incorporated",
@@ -179,6 +267,14 @@
   "name": "Novo Nordisk A/S",
   "sector": "Healthcare"
  },
+ "OCCIM": {
+  "name": "OFS Credit Company, Inc.",
+  "sector": "Financial Services"
+ },
+ "ONCHU": {
+  "name": "1RT Acquisition Corp.",
+  "sector": "Financial Services"
+ },
  "ORCL": {
   "name": "Oracle Corporation",
   "sector": "Technology"
@@ -186,6 +282,10 @@
  "OXY": {
   "name": "Occidental Petroleum Corporation",
   "sector": "Energy"
+ },
+ "PCAPU": {
+  "name": "ProCap Acquisition Corp",
+  "sector": "Financial Services"
  },
  "PEP": {
   "name": "PepsiCo, Inc.",
@@ -199,6 +299,10 @@
   "name": "Permian Resources Corporation",
   "sector": "Energy"
  },
+ "PRIF-PK": {
+  "name": "Priority Income Fund, Inc.",
+  "sector": "Financial Services"
+ },
  "PXED": {
   "name": "Phoenix Education Partners, Inc.",
   "sector": "Consumer Defensive"
@@ -207,8 +311,28 @@
   "name": "QUALCOMM Incorporated",
   "sector": "Technology"
  },
+ "QSEA": {
+  "name": "Quartzsea Acquisition Corporati",
+  "sector": "Financial Services"
+ },
  "RF": {
   "name": "Regions Financial Corporation",
+  "sector": "Financial Services"
+ },
+ "RREV": {
+  "name": "RRE Ventures Acquisition Corp.",
+  "sector": "Financial Services"
+ },
+ "RSF": {
+  "name": "RiverNorth Capital and Income Fund, Inc.",
+  "sector": "Financial Services"
+ },
+ "SAGU": {
+  "name": "Shreya Acquisition Group",
+  "sector": "Financial Services"
+ },
+ "SHOT": {
+  "name": "RMG ML Sports Holdings",
   "sector": "Financial Services"
  },
  "SKHY": {
@@ -223,6 +347,10 @@
   "name": "Sandisk Corporation",
   "sector": "Technology"
  },
+ "TRAD-UN": {
+  "name": "Apex Tech Acquisition Inc.",
+  "sector": "Financial Services"
+ },
  "TSCO": {
   "name": "Tractor Supply Company",
   "sector": "Consumer Cyclical"
@@ -234,6 +362,10 @@
  "TSM": {
   "name": "Taiwan Semiconductor Manufacturing Company Limited",
   "sector": "Technology"
+ },
+ "TY-P": {
+  "name": "Tri-Continental Corporation PFD $2.50",
+  "sector": ""
  },
  "UDR": {
   "name": "UDR, Inc.",
@@ -251,8 +383,20 @@
   "name": "Verizon Communications Inc.",
   "sector": "Communication Services"
  },
+ "WENC": {
+  "name": "West Enclave Merger Corp.",
+  "sector": "Financial Services"
+ },
  "XOM": {
   "name": "ExxonMobil Holdings Corporation",
   "sector": "Energy"
+ },
+ "XSLLU": {
+  "name": "Xsolla SPAC 1",
+  "sector": "Financial Services"
+ },
+ "YICCU": {
+  "name": "Yorkville International Capital Corp.",
+  "sector": "Financial Services"
  }
 }
