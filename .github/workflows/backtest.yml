@@ -35,7 +35,7 @@ jobs:
           python backtest.py
           python portfolio.py
           python sp500_portfolio.py
-      - if: ${{ inputs.target != 'screen' && inputs.target != 'plain' && inputs.target != 'bands' }}
+      - if: ${{ inputs.target != 'screen' && inputs.target != 'plain' && inputs.target != 'bands' && inputs.target != 'range' }}
         run: python backtest_ma5_20.py
       - if: ${{ inputs.target == 'screen' || inputs.target == 'plain' || inputs.target == 'bands' || inputs.target == 'range' }}
         run: python backtest_screen.py

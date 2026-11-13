@@ -20,7 +20,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent
 CFG = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
 OUT = ROOT / "results"
-START, WARMUP_START = "2021-01-01", "2020-06-01"
+START, WARMUP_START = "2025-11-01", "2025-04-01"
 POOL_SIZE = 250
 
 
