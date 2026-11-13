@@ -37,11 +37,12 @@ jobs:
           python sp500_portfolio.py
       - if: ${{ inputs.target != 'screen' && inputs.target != 'plain' && inputs.target != 'bands' }}
         run: python backtest_ma5_20.py
-      - if: ${{ inputs.target == 'screen' || inputs.target == 'plain' || inputs.target == 'bands' }}
+      - if: ${{ inputs.target == 'screen' || inputs.target == 'plain' || inputs.target == 'bands' || inputs.target == 'range' }}
         run: python backtest_screen.py
         env:
           PLAIN: ${{ inputs.target == 'plain' && '1' || '' }}
           BANDS: ${{ inputs.target == 'bands' && '1' || '' }}
+          RANGE: ${{ inputs.target == 'range' && '1' || '' }}
       - name: Save results
         run: |
           git config user.name "github-actions[bot]"
