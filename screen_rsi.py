@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """횡보 후 5일선 돌파 스캐너 → 텔레그램 (장 마감 후 하루 1회).
 
-1) 조건 (config.json "screen"): 주가 $40~$100, 직전 range_days(40)거래일
+1) 조건 (config.json "screen"): 주가 $100~$200, 직전 range_days(40)거래일
    고가-저가 범위가 range_pct(10)% 이내로 횡보 + 당일 5일선 상향 돌파 → 🟢 알림
 2) 추적 종목이 하락 기준선(20일선 -5%) 아래로 마감 → 🔴 알림 (따로 전송)
    돌파 때 이미 기준선 아래였던 종목은, 기준선 위로 올라오기 전에는 돌파 가격 아래로 내려갈 때 알림
@@ -19,7 +19,7 @@ import pandas as pd
 
 import alert as al
 
-DEF = {"min_price": 40, "max_price": 100, "range_days": 40, "range_pct": 10, "track_days": 60,
+DEF = {"min_price": 100, "max_price": 200, "range_days": 40, "range_pct": 10, "track_days": 60,
        "exit_pct": 5, "min_mktcap": 1_000_000_000,
        "max_per": 25, "max_debt_equity": 150, "min_roe": 10}
 SC = {**DEF, **al.CONFIG.get("screen", {})}
