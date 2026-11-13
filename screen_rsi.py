@@ -4,8 +4,8 @@
 1) 매도 소진 조건 (config.json "screen"): 주가 $5~$40, RSI(14) <= 30,
    거래량 5거래일 연속 감소, 당일 거래량 < 직전 20일 평균
 2) 조건 충족 후 watch_days(10)거래일 안에 5일선 상향 돌파 → 🟢 알림, 추적 시작
-3) 추적 종목이 20일선 위로 올라선 뒤 다시 20일선 아래로 마감 → 🔴 알림 (따로 전송)
-   track_days(60)거래일 동안 20일선 위로 못 올라오면 추적 종료
+3) 추적 종목이 하락 기준선(20일선 -5%) 아래로 마감 → 🔴 알림 (따로 전송)
+   돌파 때 이미 기준선 아래였던 종목은, 기준선 위로 올라오기 전에는 돌파 가격 아래로 내려갈 때 알림
   python screen_rsi.py [--force] [--dry-run]
 """
 from __future__ import annotations
@@ -21,7 +21,7 @@ import pandas as pd
 
 import alert as al
 
-DEF = {"min_price": 5, "max_price": 40, "rsi_period": 14, "rsi_max": 30, "vol_days": 5, "watch_days": 10, "track_days": 60}
+DEF = {"min_price": 5, "max_price": 40, "rsi_period": 14, "rsi_max": 30, "vol_days": 5, "watch_days": 10, "track_days": 60, "exit_pct": 5}
 SC = {**DEF, **al.CONFIG.get("screen", {})}
 STATE = al.ROOT / "state_screen.json"
 OUT = al.ROOT / "results" / "screen"
@@ -103,15 +103,15 @@ def run_day(close, vol, st):
         if s not in close.columns or pd.isna(close[s].iloc[-1]) or day <= p["since"]:
             continue
         px, m20 = float(close[s].iloc[-1]), float(ma20[s].iloc[-1])
-        if not p.get("armed"):
-            if px > m20:
-                p["armed"] = True
-            elif (close.index > p["since"]).sum() > SC["track_days"]:
-                expired.append((s, p, px))
-                del active[s]
+        line = m20 * (1 - SC["exit_pct"] / 100)      # 하락 기준선: 20일선 -5%
+        if not p.get("armed") and px >= line:
+            p["armed"] = True                         # 기준선 위로 올라옴 → 이후 기준선 이탈 시 알림
             continue
-        if px < m20:
-            exits.append({"symbol": s, "price": px, "ma20": m20, **{f"e_{k}": v for k, v in p.items()}})
+        # 기준선 위로 올라온 적 있으면: 기준선 아래로 내려갈 때 / 없으면: 돌파 가격 아래로 내려갈 때
+        if (p.get("armed") and px < line) or (not p.get("armed") and px < p["price"]):
+            exits.append({"symbol": s, "price": px, "ma20": m20, "line": line,
+                          "why": "기준선 이탈" if p.get("armed") else "돌파가 아래로 하락",
+                          **{f"e_{k}": v for k, v in p.items()}})
             del active[s]
 
     watch, buys = {}, []
@@ -128,7 +128,7 @@ def run_day(close, vol, st):
                          "ma5": float(ma5[s].iloc[-1]), "ma20": float(ma20[s].iloc[-1]),
                          "rsi": float(r[s].iloc[-1]), "setup": sds, "setup_rsi": float(r[s].loc[sd]),
                          "from_hi60": (px / float(c.iloc[-60:].max()) - 1) * 100})
-            active[s] = {"since": day, "price": round(px, 4), "setup": sds, "armed": bool(px > ma20[s].iloc[-1])}
+            active[s] = {"since": day, "price": round(px, 4), "setup": sds, "armed": bool(px >= ma20[s].iloc[-1] * (1 - SC["exit_pct"] / 100))}
             alerted[s] = sds
     buys.sort(key=lambda b: b["chg"], reverse=True)
     return day, buys, exits, expired, watch
@@ -148,10 +148,10 @@ def buy_message(day, buys, meta) -> str:
 
 
 def exit_message(day, exits, expired, meta) -> str:
-    L = [f"🔴 20일선 이탈 {fmt(day)} (5일선 돌파 알림 종목)", ""]
+    L = [f"🔴 하락 알림 {fmt(day)} (5일선 돌파 알림 종목 · 기준: 20일선 -{SC['exit_pct']:g}%)", ""]
     for e in exits:
         L += [f"• {al.label(e['symbol'], meta)}",
-              f"   ${e['price']:.2f}  20일선 ${e['ma20']:.2f}",
+              f"   ${e['price']:.2f}  기준선 ${e['line']:.2f} (20일선 ${e['ma20']:.2f})  · {e['why']}",
               f"   돌파 {fmt(e['e_since'])} ${e['e_price']:.2f} → {(e['price']/e['e_price']-1)*100:+.1f}%"]
     if expired:
         L += ["", f"⏹ 추적 종료 ({SC['track_days']}거래일 동안 20일선 위로 못 올라옴)"]

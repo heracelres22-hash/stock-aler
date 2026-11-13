@@ -21,6 +21,6 @@
     "rsi_max": 30,
     "vol_days": 5,
     "watch_days": 10,
-    "track_days": 60
+    "exit_pct": 5
   }
 }
