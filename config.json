@@ -20,6 +20,7 @@
     "rsi_period": 14,
     "rsi_max": 30,
     "vol_days": 5,
-    "max_list": 40
+    "watch_days": 10,
+    "track_days": 60
   }
 }
