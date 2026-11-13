@@ -32,21 +32,32 @@ def in_window(now: datetime) -> bool:
 
 
 def universe() -> dict[str, str]:
-    """가격 범위 안의 미국 정규 거래소 종목 전부 (Yahoo 스크리너 250개씩 페이지 조회)."""
+    """S&P 500 시가총액 상위 2개 섹터(Technology, Financial Services)에서
+    가격 범위 안의 미국 정규 거래소 종목만 조회 (Yahoo 스크리너 250개씩 페이지 조회)."""
     import yfinance as yf
     from yfinance import EquityQuery as Q
 
-    q = Q("and", [Q("eq", ["region", "us"]), Q("is-in", ["exchange", *al.CONFIG["exchanges"]]),
-                  Q("gte", ["intradayprice", SC["min_price"]]), Q("lte", ["intradayprice", SC["max_price"]])])
-    names, off = {}, 0
-    while off < 8000:
-        res = yf.screen(q, sortField="dayvolume", sortAsc=False, size=250, offset=off)
-        quotes = [x for x in res.get("quotes", []) if x.get("symbol")]
-        for x in quotes:
-            names[x["symbol"]] = x.get("longName") or x.get("shortName") or ""
-        if len(quotes) < 250:
-            break
-        off += 250
+    # S&P 500 시가총액 상위 2개 섹터 (yfinance 스크리너 섹터 값 기준)
+    TOP_SECTORS = ["Technology", "Financial Services"]
+
+    names: dict[str, str] = {}
+    for sector in TOP_SECTORS:
+        off = 0
+        while off < 8000:
+            q = Q("and", [
+                Q("eq", ["region", "us"]),
+                Q("is-in", ["exchange", *al.CONFIG["exchanges"]]),
+                Q("gte", ["intradayprice", SC["min_price"]]),
+                Q("lte", ["intradayprice", SC["max_price"]]),
+                Q("eq", ["sector", sector]),
+            ])
+            res = yf.screen(q, sortField="dayvolume", sortAsc=False, size=250, offset=off)
+            quotes = [x for x in res.get("quotes", []) if x.get("symbol")]
+            for x in quotes:
+                names[x["symbol"]] = x.get("longName") or x.get("shortName") or ""
+            if len(quotes) < 250:
+                break
+            off += 250
     return names
 
 
@@ -136,6 +147,7 @@ def run_day(close, vol, st):
 
 def buy_message(day, buys, meta) -> str:
     L = [f"🟢 매도 소진 후 5일선 돌파 {fmt(day)} (장 마감 기준)",
+         f"섹터: S&P 500 시가총액 상위 2개 (Technology · Financial Services)",
          f"조건: RSI({SC['rsi_period']}) ≤ {SC['rsi_max']} · 거래량 {SC['vol_days']}일 연속 감소 · 20일 평균 미만 · "
          f"${SC['min_price']}~${SC['max_price']} → {SC['watch_days']}거래일 안에 5일선 돌파", ""]
     for b in buys:
