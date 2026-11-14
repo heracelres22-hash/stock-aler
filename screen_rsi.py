@@ -12,12 +12,19 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from datetime import datetime, time as dtime
 
 import pandas as pd
 
 import alert as al
+
+# 펀드·신탁·SPAC 등 사업회사가 아닌 종목을 이름/사업설명으로 식별
+# ("Northern Trust" 같은 정상 기업이 걸리지 않도록 trust는 수식어와 함께만 매칭)
+FUND_RE = re.compile(
+    r"\b(fund|funds|etf|etn|closed[-\s]?end|spac|acquisition corp|blank check"
+    r"|(income|credit|royalty|unit|investment|mortgage|realty|properties)\s+trust)\b", re.I)
 
 DEF = {"min_price": 100, "max_price": 200, "range_days": 40, "range_pct": 10, "track_days": 60,
        "exit_pct": 5, "min_mktcap": 1_000_000_000,
@@ -60,11 +67,38 @@ def universe() -> dict[str, str]:
             # SPAC 유닛/워런트/우선주/신탁 티커(대시 포함) 제외 — 정상 보통주만
             quotes = [x for x in res.get("quotes", []) if x.get("symbol") and "-" not in x["symbol"]]
             for x in quotes:
-                names[x["symbol"]] = x.get("longName") or x.get("shortName") or ""
+                name = x.get("longName") or x.get("shortName") or ""
+                qt = (x.get("quoteType") or "").upper()
+                if qt and qt != "EQUITY":            # ETF·펀드 등 주식이 아닌 종목
+                    continue
+                if FUND_RE.search(name):             # 폐쇄형 펀드·신탁·SPAC
+                    continue
+                names[x["symbol"]] = name
             if len(quotes) < 250:
                 break
             off += 250
     return names
+
+
+def is_operating_company(sym: str) -> tuple[bool, str]:
+    """알림 직전 최종 확인: 펀드·신탁처럼 사업회사가 아닌 종목이면 (False, 이유).
+    조회가 실패하면 통과시킨다 (일시적 오류로 진짜 신호를 놓치지 않도록)."""
+    import yfinance as yf
+
+    try:
+        info = yf.Ticker(sym).get_info() or {}
+    except Exception as e:
+        return True, f"확인 실패({type(e).__name__})"
+    qt = (info.get("quoteType") or "").upper()
+    if qt and qt != "EQUITY":
+        return False, f"quoteType={qt}"
+    name = f"{info.get('longName') or ''} {info.get('shortName') or ''}"
+    if FUND_RE.search(name):
+        return False, "이름이 펀드·신탁"
+    summary = info.get("longBusinessSummary") or ""
+    if FUND_RE.search(summary) and not info.get("fullTimeEmployees"):
+        return False, "사업설명이 펀드 + 직원수 없음"
+    return True, ""
 
 
 def download(symbols: list[str]) -> pd.DataFrame:
@@ -182,6 +216,16 @@ def main() -> int:
     close = download(syms)
     close = close.dropna(how="all")
     day, buys, exits, expired = run_day(close, st)
+    kept = []                                        # 알림 직전 최종 확인: 펀드·신탁 제외
+    for b in buys:
+        ok, why = is_operating_company(b["symbol"])
+        if ok:
+            kept.append(b)
+        else:
+            print(f"[제외] {b['symbol']}: {why}")
+            st.get("active", {}).pop(b["symbol"], None)
+            st.get("alerted", {}).pop(b["symbol"], None)
+    buys = kept
     print(f"기준일 {day}")
     print(f"돌파 {[b['symbol'] for b in buys]} · 이탈 {[e['symbol'] for e in exits]} · "
           f"종료 {[x[0] for x in expired]} · 추적 중 {sorted(st['active'])}")
