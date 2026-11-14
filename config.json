@@ -15,12 +15,10 @@
   ],
   "intraday_note": true,
   "screen": {
-    "min_price": 5,
-    "max_price": 40,
-    "rsi_period": 14,
-    "rsi_max": 30,
-    "vol_days": 5,
-    "watch_days": 10,
+    "min_price": 100,
+    "max_price": 200,
+    "range_days": 40,
+    "range_pct": 10,
     "exit_pct": 5
   }
 }
