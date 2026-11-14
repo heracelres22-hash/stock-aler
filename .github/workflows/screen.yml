@@ -4,7 +4,11 @@ on:
   schedule:
     # 장 마감 후(뉴욕 16:40). 서머타임/표준시 대비 두 번 예약, 스크립트가 하루 1회만 실행. (UTC 기준)
     - cron: "40 20,21 * * 1-5"
-  workflow_dispatch: {}   # 수동 실행 (시간 무관)
+  workflow_dispatch:      # 수동 실행 (시간 무관)
+    inputs:
+      replay:
+        description: "최근 N거래일 신호만 조회 (텔레그램 전송 없음). 비우면 평소처럼 실행"
+        default: ""
 
 permissions:
   contents: write
@@ -30,6 +34,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
           FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
+          REPLAY: ${{ inputs.replay || '' }}
       - name: Save
         run: |
           git config user.name "github-actions[bot]"

@@ -198,11 +198,44 @@ def exit_message(day, exits, expired, meta) -> str:
     return "\n".join(L)
 
 
+def replay(n: int) -> int:
+    """최근 n거래일을 현재 규칙으로 되돌려 매수 신호를 나열 (전송·상태 저장 없음).
+    setups()는 과거 데이터만 쓰므로 그날 알림이 봤을 것과 같은 결과."""
+    names = universe()
+    syms = sorted(names)
+    print(f"대상 {len(syms)}종목 · 최근 {n}거래일 리플레이")
+    close = download(syms).dropna(how="all")
+    sig = setups(close).iloc[-n:]
+    checked: dict[str, tuple[bool, str]] = {}
+    total = 0
+    for d, row in sig.iterrows():
+        hits = [s for s in sig.columns[row.fillna(False)]]
+        shown = []
+        for s in hits:
+            if s not in checked:
+                checked[s] = is_operating_company(s)
+            ok, why = checked[s]
+            px = close[s].loc[d]
+            shown.append(f"{s} ${px:.2f}" if ok else f"{s}(제외:{why})")
+        ok_cnt = sum(1 for s in hits if checked[s][0])
+        total += ok_cnt
+        print(f"  {d.date()} · {ok_cnt}건  {', '.join(shown) or '-'}")
+    uniq = sorted({s for s in checked if checked[s][0]})
+    print(f"\n합계 {total}건 · 중복 제외 {len(uniq)}종목: {', '.join(uniq) or '-'}")
+    for s in uniq:
+        print(f"  {s}  {names.get(s, '')}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--replay", type=int, default=0, help="최근 N거래일 신호만 조회 (전송 없음)")
     args = ap.parse_args()
+    n = args.replay or int(os.environ.get("REPLAY") or 0)
+    if n:
+        return replay(n)
     force = args.force or os.environ.get("FORCE") == "1"
     now = datetime.now(al.NY)
     st = json.loads(STATE.read_text(encoding="utf-8")) if STATE.exists() else {}
