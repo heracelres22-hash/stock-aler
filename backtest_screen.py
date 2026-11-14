@@ -397,10 +397,93 @@ def main_range():
     print("→ results/range_days.md")
 
 
+def prior_peak(close: pd.DataFrame, k: int = 5) -> pd.DataFrame:
+    """각 날짜 기준 '직전 스윙 고점' 종가. 좌우 k일보다 높은 날을 고점으로 보고,
+    고점은 k일 뒤에야 확정되므로 shift(k)로 룩어헤드를 제거한 뒤 앞으로 채움."""
+    pk = close.rolling(2 * k + 1, center=True, min_periods=2 * k + 1).max()
+    return close.where(close.ge(pk) & close.notna()).shift(k).ffill()
+
+
+def main_break():
+    """횡보 또는 하락 뒤 '직전 고점 돌파 + 5일선 돌파' 규칙을 현재 규칙과 비교."""
+    bt.OUT.mkdir(exist_ok=True)
+    syms = universe()
+    close, vol = load(syms + ["SPY"])
+    spy = close.pop("SPY").astype(float)
+    raw = RAW.reindex(columns=close.columns) if RAW is not None else close
+    print(f"가격 데이터 {close.shape[1]}종목, {close.index[0].date()} ~ {close.index[-1].date()}")
+
+    RD = RANGE_DAYS                         # 최소 횡보·하락 기간 (기본 40거래일, 더 길어도 통과)
+    DOWN_PCT = float(os.environ.get("DOWN_PCT", "10"))
+    ma5, ma20 = close.rolling(5).mean(), close.rolling(20).mean()
+    cross = (close.shift(1) <= ma5.shift(1)) & (close > ma5)
+    hi_r, lo_r = close.rolling(RD).max().shift(1), close.rolling(RD).min().shift(1)
+    cons = ((hi_r - lo_r) / hi_r * 100 <= RANGE_PCT) & hi_r.notna()          # 횡보
+    down = (close.shift(1) / close.shift(RD + 1) - 1) * 100 <= -DOWN_PCT     # 하락
+    peak = close > prior_peak(close)                                         # 직전 고점 돌파
+
+    ndays = (close.index >= bt.START).sum()
+    s_spy = spy[spy.index >= bt.START].dropna()
+    yrs = (s_spy.index[-1] - s_spy.index[0]).days / 365.25
+    spy_cagr = ((s_spy.iloc[-1] / s_spy.iloc[0]) ** (1 / yrs) - 1) * 100
+    spy_mdd = ((s_spy / s_spy.cummax()) - 1).min() * 100
+
+    fmt_num = {"거래수": "{:.0f}", "하루신호": "{:.1f}", "평균보유일": "{:.1f}", "승률": "{:.1f}%"}
+    md = [f"# 전고점 돌파 규칙 비교 ({bt.START[:4]} ~ {close.index[-1].date()})", "",
+          f"- 횡보: 직전 {RD}거래일 이상 고저 범위 ≤ {RANGE_PCT:.0f}% · "
+          f"하락: 직전 {RD}거래일 이상 {DOWN_PCT:.0f}% 이상 하락",
+          "- 직전 고점 = 좌우 5거래일보다 높은 마지막 스윙 고점 (5거래일 뒤 확정, 룩어헤드 없음)",
+          "- 매수: 조건 충족 + 직전 고점 돌파 + 5일선 상향 돌파일 종가 · 매도: 종가 < 20일선 × 0.95",
+          f"- 후보군: 현재 상장 종목 {close.shape[1]}개 (생존 편향), 비용 매수·매도 각 0.1%",
+          f"- SPY 보유: 연평균 {spy_cagr:+.1f}%, 최대낙폭 {spy_mdd:.1f}%", ""]
+
+    for lo_p, hi_p in RANGE_BANDS:
+        band_name = f"${lo_p}~{hi_p}" if hi_p else f"${lo_p} 이상"
+        band = (raw >= lo_p) & ((raw <= hi_p) if hi_p else True)
+        rules = {
+            "현재(횡보만)": cons,
+            "신규(횡보/하락+전고점)": (cons | down) & peak,
+            "신규-횡보만+전고점": cons & peak,
+            "신규-하락만+전고점": down & peak,
+        }
+        rows = []
+        for name, base in rules.items():
+            sig = (cross & band & base).fillna(False)
+            t = live_trades(close, sig, ma20, bt.START)
+            row = {"규칙": name, "거래수": len(t), "하루신호": len(t) / ndays,
+                   "승률": (t.ret > 0).mean() * 100 if len(t) else float("nan"),
+                   "평균수익": t.ret.mean() * 100 if len(t) else float("nan"),
+                   "평균이익": t.ret[t.ret > 0].mean() * 100 if len(t) else float("nan"),
+                   "평균손실": t.ret[t.ret <= 0].mean() * 100 if len(t) else float("nan"),
+                   "평균보유일": t.days.mean() if len(t) else float("nan")}
+            for k in (10, 20):
+                if len(t):
+                    eq, tk = slots(t, close.astype(float), k, bt.START)
+                    st = pf.stats(eq, tk, spy)
+                    row[f"{k}칸 CAGR"], row[f"{k}칸 낙폭"] = st.iloc[-1]["CAGR"], st.iloc[-1]["MDD"]
+                else:
+                    row[f"{k}칸 CAGR"] = row[f"{k}칸 낙폭"] = float("nan")
+            rows.append(row)
+            print(f"  {band_name} {name}: {row}", flush=True)
+
+        df = pd.DataFrame(rows); cols = list(df.columns)
+        md += [f"## 가격대 {band_name}", "",
+               "| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
+        for _, r in df.iterrows():
+            md.append("| " + " | ".join(str(r[c]) if c == cols[0] else ("-" if pd.isna(r[c]) else
+                       fmt_num.get(c, "{:+.1f}%").format(r[c])) for c in cols) + " |")
+        md.append("")
+
+    (bt.OUT / "break_high.md").write_text("\n".join(md), encoding="utf-8")
+    print("→ results/break_high.md")
+
+
 if __name__ == "__main__":
     if os.environ.get("BANDS") == "1":
         main_bands()
     elif os.environ.get("RANGE") == "1":
         main_range()
+    elif os.environ.get("BREAK") == "1":
+        main_break()
     else:
         main()
