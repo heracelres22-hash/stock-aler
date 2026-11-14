@@ -197,6 +197,11 @@ def is_operating_company(sym: str) -> tuple[bool, str]:
     name = f"{info.get('longName') or ''} {info.get('shortName') or ''}"
     if FUND_RE.search(name):
         return False, "이름이 펀드·신탁"
+    # 폐쇄형 펀드는 Yahoo가 운용사와 같은 문구("publicly owned investment manager")로
+    # 설명해 구분이 안 되지만, 자체 임직원이 없다 (BlackRock·SEI 등 실제 운용사는 있음).
+    if "asset management" in (info.get("industry") or "").lower() \
+            and not info.get("fullTimeEmployees"):
+        return False, "자산운용 분류 + 직원수 없음(펀드 성격)"
     summary = info.get("longBusinessSummary") or ""
     m = SUMMARY_FUND_RE.search(summary)
     if m:                                            # 폐쇄형 펀드·BDC 등 투자회사
