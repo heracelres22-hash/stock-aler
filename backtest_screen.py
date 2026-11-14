@@ -519,7 +519,7 @@ def main_ma20():
           f"- 후보군: 현재 상장 종목 {close.shape[1]}개 (생존 편향), 비용 매수·매도 각 0.1%",
           f"- SPY 보유: 연평균 {spy_cagr:+.1f}%, 최대낙폭 {spy_mdd:.1f}%", ""]
 
-    for lo_p, hi_p in [(0, None), (0, 40), (40, 100), (100, 200), (200, None)]:
+    for lo_p, hi_p in [(0, None), (40, 200), (100, 200), (40, 100), (0, 40)]:
         band_name = band_label(lo_p, hi_p)
         band = (raw >= lo_p) & ((raw <= hi_p) if hi_p else True)
         rows = []
