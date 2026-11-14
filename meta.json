@@ -83,6 +83,10 @@
   "name": "Bank of America Corporation",
   "sector": "Financial Services"
  },
+ "BOW": {
+  "name": "Bowhead Specialty Holdings Inc.",
+  "sector": "Financial Services"
+ },
  "BRKH": {
   "name": "Burtech Acquisition Corp II",
   "sector": "Financial Services"
@@ -130,6 +134,10 @@
  "DELL": {
   "name": "Dell Technologies Inc.",
   "sector": "Technology"
+ },
+ "DNP": {
+  "name": "DNP Select Income Fund Inc.",
+  "sector": "Financial Services"
  },
  "DOW": {
   "name": "Dow Inc.",

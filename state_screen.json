@@ -1,6 +1,20 @@
 {
- "last_run": "2026-11-12",
- "last_day": "2026-11-12",
- "active": {},
- "alerted": {}
+ "last_run": "2026-11-14",
+ "last_day": "2026-11-13",
+ "active": {
+  "BOW": {
+   "since": "2026-11-13",
+   "price": 34.13,
+   "armed": true
+  },
+  "DNP": {
+   "since": "2026-11-13",
+   "price": 10.12,
+   "armed": true
+  }
+ },
+ "alerted": {
+  "BOW": "2026-11-13",
+  "DNP": "2026-11-13"
+ }
 }
