@@ -80,22 +80,67 @@ def universe() -> dict[str, str]:
     return names
 
 
-def translate_ko(text: str) -> str:
-    """영문 헤드라인을 한국어로. 실패하면 원문 그대로 (알림이 끊기지 않도록)."""
+def _tr_deepl(text: str) -> str:
+    """DeepL (DEEPL_API_KEY 시크릿이 있을 때만). 품질이 가장 좋음."""
     import requests
 
+    key = os.environ.get("DEEPL_API_KEY")
+    if not key:
+        raise RuntimeError("키 없음")
+    host = "api-free.deepl.com" if key.endswith(":fx") else "api.deepl.com"
+    r = requests.post(f"https://{host}/v2/translate",
+                      data={"text": text, "source_lang": "EN", "target_lang": "KO"},
+                      headers={"Authorization": f"DeepL-Auth-Key {key}"}, timeout=12)
+    r.raise_for_status()
+    return (r.json()["translations"][0]["text"] or "").strip()
+
+
+def _tr_mymemory(text: str) -> str:
+    """MyMemory — 키 없이 사용 가능 (익명 한도 하루 약 5천 자)."""
+    import requests
+
+    r = requests.get("https://api.mymemory.translated.net/get",
+                     params={"q": text, "langpair": "en|ko"}, timeout=12)
+    r.raise_for_status()
+    j = r.json()
+    out = ((j.get("responseData") or {}).get("translatedText") or "").strip()
+    if not out or "MYMEMORY WARNING" in out.upper() or "QUERY LENGTH LIMIT" in out.upper():
+        raise RuntimeError(f"응답 이상({j.get('responseStatus')})")
+    return out
+
+
+def _tr_google(text: str) -> str:
+    """구글 비공식 엔드포인트 — 데이터센터 IP는 차단될 수 있음."""
+    import requests
+
+    r = requests.get("https://translate.googleapis.com/translate_a/single",
+                     params={"client": "gtx", "sl": "en", "tl": "ko", "dt": "t", "q": text},
+                     timeout=10)
+    r.raise_for_status()
+    return "".join(p[0] for p in r.json()[0] if p and p[0]).strip()
+
+
+TRANSLATORS = [("DeepL", _tr_deepl), ("MyMemory", _tr_mymemory), ("Google", _tr_google)]
+_TR_DEAD: set[str] = set()      # 이번 실행에서 이미 실패한 제공처는 다시 시도하지 않음
+
+
+def translate_ko(text: str) -> str:
+    """영문 헤드라인을 한국어로. 모두 실패하면 원문 그대로 (알림이 끊기지 않도록)."""
     if not text:
         return text
-    try:
-        r = requests.get("https://translate.googleapis.com/translate_a/single",
-                         params={"client": "gtx", "sl": "en", "tl": "ko", "dt": "t", "q": text},
-                         timeout=10)
-        r.raise_for_status()
-        out = "".join(p[0] for p in r.json()[0] if p and p[0]).strip()
-        return out or text
-    except Exception as e:
-        print(f"[번역 실패] {type(e).__name__}: {text[:40]}")
-        return text
+    for name, fn in TRANSLATORS:
+        if name in _TR_DEAD:
+            continue
+        try:
+            out = fn(text)
+            if out:
+                return out
+            raise RuntimeError("빈 응답")
+        except Exception as e:
+            code = getattr(getattr(e, "response", None), "status_code", None)
+            print(f"[번역 실패:{name}] {code or type(e).__name__} {e}"[:120])
+            _TR_DEAD.add(name)
+    return text
 
 
 def recent_news(sym: str, count: int = 3, days: int = 14) -> list[str]:
@@ -305,6 +350,15 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--replay", type=int, default=0, help="최근 N거래일 신호만 조회 (전송 없음)")
     args = ap.parse_args()
+    probe = os.environ.get("TRANSLATE_TEST")
+    if probe:                                        # 번역 제공처 점검 (데이터 조회 없이 즉시)
+        for name, fn in TRANSLATORS:
+            try:
+                print(f"  {name}: {fn(probe)}")
+            except Exception as e:
+                code = getattr(getattr(e, "response", None), "status_code", None)
+                print(f"  {name}: 실패 — {code or type(e).__name__} {e}"[:160])
+        return 0
     n = args.replay or int(os.environ.get("REPLAY") or 0)
     if n:
         return replay(n)

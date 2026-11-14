@@ -9,6 +9,9 @@ on:
       replay:
         description: "최근 N거래일 신호만 조회 (텔레그램 전송 없음). 비우면 평소처럼 실행"
         default: ""
+      translate_test:
+        description: "번역 제공처 점검용 영문 문장 (입력하면 번역만 시도하고 종료)"
+        default: ""
 
 permissions:
   contents: write
@@ -35,6 +38,8 @@ jobs:
           TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
           FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
           REPLAY: ${{ inputs.replay || '' }}
+          TRANSLATE_TEST: ${{ inputs.translate_test || '' }}
+          DEEPL_API_KEY: ${{ secrets.DEEPL_API_KEY }}
       - name: Save
         run: |
           git config user.name "github-actions[bot]"
