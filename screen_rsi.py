@@ -360,6 +360,23 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--replay", type=int, default=0, help="최근 N거래일 신호만 조회 (전송 없음)")
     args = ap.parse_args()
+    info_probe = os.environ.get("INFO_TEST")
+    if info_probe:                                   # 종목 분류 정보 점검 (데이터 조회 없이 즉시)
+        import yfinance as yf
+        for sym in info_probe.replace(",", " ").split():
+            try:
+                d = yf.Ticker(sym).get_info() or {}
+            except Exception as e:
+                print(f"{sym}: 조회 실패 {type(e).__name__}")
+                continue
+            print(f"\n=== {sym} ===")
+            for k in ("longName", "quoteType", "industry", "sector", "fullTimeEmployees",
+                      "legalType", "category", "fundFamily"):
+                if d.get(k) is not None:
+                    print(f"  {k}: {d[k]}")
+            print(f"  summary: {(d.get('longBusinessSummary') or '(없음)')[:400]}")
+            print(f"  판정: {is_operating_company(sym)}")
+        return 0
     probe = os.environ.get("TRANSLATE_TEST")
     if probe:                                        # 번역 제공처 점검 (데이터 조회 없이 즉시)
         for name, fn in TRANSLATORS:

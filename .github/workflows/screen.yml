@@ -12,6 +12,9 @@ on:
       translate_test:
         description: "번역 제공처 점검용 영문 문장 (입력하면 번역만 시도하고 종료)"
         default: ""
+      info_test:
+        description: "종목 분류 정보 점검용 티커 (예: GAM MAIN). 입력하면 조회만 하고 종료"
+        default: ""
 
 permissions:
   contents: write
@@ -39,6 +42,7 @@ jobs:
           FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
           REPLAY: ${{ inputs.replay || '' }}
           TRANSLATE_TEST: ${{ inputs.translate_test || '' }}
+          INFO_TEST: ${{ inputs.info_test || '' }}
           DEEPL_API_KEY: ${{ secrets.DEEPL_API_KEY }}
       - name: Save
         run: |
