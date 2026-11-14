@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""횡보 후 5일선 돌파 스캐너 → 텔레그램 (장 마감 후 하루 1회).
+"""횡보 후 20일선 돌파 스캐너 → 텔레그램 (장 마감 후 하루 1회).
 
 1) 조건 (config.json "screen"): 주가 $100~$200, 직전 range_days(40)거래일
-   고가-저가 범위가 range_pct(10)% 이내로 횡보 + 당일 5일선 상향 돌파 → 🟢 알림
+   고가-저가 범위가 range_pct(10)% 이내로 횡보 + 당일 20일선 상향 돌파 → 🟢 알림
 2) 추적 종목이 하락 기준선(20일선 -5%) 아래로 마감 → 🔴 알림 (따로 전송)
    돌파 때 이미 기준선 아래였던 종목은, 기준선 위로 올라오기 전에는 돌파 가격 아래로 내려갈 때 알림
   python screen_rsi.py [--force] [--dry-run]
@@ -84,14 +84,14 @@ def download(symbols: list[str]) -> pd.DataFrame:
 
 
 def setups(close: pd.DataFrame) -> pd.DataFrame:
-    """날짜×종목 매수 신호: 가격대 + 직전 range_days거래일 횡보(고저 범위 ≤range_pct%) + 당일 5일선 상향 돌파."""
+    """날짜×종목 매수 신호: 가격대 + 직전 range_days거래일 횡보(고저 범위 ≤range_pct%) + 당일 20일선 상향 돌파."""
     rd = SC["range_days"]
     hi = close.rolling(rd).max().shift(1)
     lo = close.rolling(rd).min().shift(1)
     rng_ok = ((hi - lo) / hi * 100 <= SC["range_pct"]) & hi.notna()
     band = (close >= SC["min_price"]) & (close <= SC["max_price"])
-    ma5 = close.rolling(5).mean()
-    cross = (close.shift(1) <= ma5.shift(1)) & (close > ma5)
+    ma20 = close.rolling(20).mean()
+    cross = (close.shift(1) <= ma20.shift(1)) & (close > ma20)
     return band & rng_ok & cross
 
 
@@ -140,9 +140,9 @@ def run_day(close: pd.DataFrame, st: dict):
 
 
 def buy_message(day, buys, meta) -> str:
-    L = [f"🟢 횡보 후 5일선 돌파 {fmt(day)} (장 마감 기준)",
+    L = [f"🟢 횡보 후 20일선 돌파 {fmt(day)} (장 마감 기준)",
          f"섹터: S&P 500 시가총액 상위 2개 (Technology · Financial Services)",
-         f"조건: ${SC['min_price']}~${SC['max_price']} · 직전 {SC['range_days']}거래일 고저 범위 ≤{SC['range_pct']:g}% 횡보 → 5일선 상향 돌파",
+         f"조건: ${SC['min_price']}~${SC['max_price']} · 직전 {SC['range_days']}거래일 고저 범위 ≤{SC['range_pct']:g}% 횡보 → 20일선 상향 돌파",
          f"가치 필터: PER≤{SC['max_per']:g} · 부채비율≤{SC['max_debt_equity']:g}% · ROE≥{SC['min_roe']:g}%", ""]
     for b in buys:
         L += [f"• {al.label(b['symbol'], meta)}",
@@ -153,7 +153,7 @@ def buy_message(day, buys, meta) -> str:
 
 
 def exit_message(day, exits, expired, meta) -> str:
-    L = [f"🔴 하락 알림 {fmt(day)} (5일선 돌파 알림 종목 · 기준: 20일선 -{SC['exit_pct']:g}%)", ""]
+    L = [f"🔴 하락 알림 {fmt(day)} (20일선 돌파 알림 종목 · 기준: 20일선 -{SC['exit_pct']:g}%)", ""]
     for e in exits:
         L += [f"• {al.label(e['symbol'], meta)}",
               f"   ${e['price']:.2f}  기준선 ${e['line']:.2f} (20일선 ${e['ma20']:.2f})  · {e['why']}",
