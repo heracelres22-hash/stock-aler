@@ -15,7 +15,7 @@
   ],
   "intraday_note": true,
   "screen": {
-    "min_price": 100,
+    "min_price": 40,
     "max_price": 200,
     "range_days": 40,
     "range_pct": 10,
