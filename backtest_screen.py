@@ -21,7 +21,7 @@ import portfolio as pf
 import screen_rsi as sr
 
 COST, EXIT_PCT = 0.001, 0.05
-W = sr.SC["watch_days"]
+W = sr.SC.get("watch_days", 10)   # 옛 RSI 전략 전용 (현재 규칙에선 미사용)
 RAW = None   # 당시 실제 주가 (분할 조정 전)
 BANDS = [(5, 40), (40, 100), (100, 200), (200, 500), (500, None)]
 PLAIN = os.environ.get("PLAIN") == "1"   # 1이면 RSI·거래량 조건 없이 가격대 + 5일선 돌파만
