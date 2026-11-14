@@ -80,6 +80,37 @@ def universe() -> dict[str, str]:
     return names
 
 
+def recent_news(sym: str, count: int = 3, days: int = 14) -> list[str]:
+    """최근 뉴스 헤드라인 (제목 · 출처 · 날짜 · 링크). 실패하면 빈 목록."""
+    import yfinance as yf
+
+    try:
+        items = yf.Ticker(sym).get_news(count=10, tab="news") or []
+    except Exception as e:
+        print(f"[뉴스 실패] {sym}: {type(e).__name__}")
+        return []
+    cutoff = pd.Timestamp.utcnow() - pd.Timedelta(days=days)
+    out = []
+    for it in items:
+        c = it.get("content") or {}
+        title = (c.get("title") or "").strip()
+        if not title:
+            continue
+        when = pd.to_datetime(c.get("pubDate") or c.get("displayTime"), errors="coerce", utc=True)
+        if pd.notna(when) and when < cutoff:
+            continue
+        src = ((c.get("provider") or {}).get("displayName") or "").strip()
+        url = ((c.get("canonicalUrl") or c.get("clickThroughUrl") or {}) or {}).get("url") or ""
+        if len(title) > 90:
+            title = title[:89].rstrip() + "…"
+        head = f"   - {title}"
+        tail = " · ".join(x for x in (src, when.strftime("%m/%d") if pd.notna(when) else "") if x)
+        out.append(f"{head}\n     {tail}\n     {url}".rstrip())
+        if len(out) >= count:
+            break
+    return out
+
+
 def is_operating_company(sym: str) -> tuple[bool, str]:
     """알림 직전 최종 확인: 펀드·신탁처럼 사업회사가 아닌 종목이면 (False, 이유).
     조회가 실패하면 통과시킨다 (일시적 오류로 진짜 신호를 놓치지 않도록)."""
@@ -182,7 +213,10 @@ def buy_message(day, buys, meta) -> str:
         L += [f"• {al.label(b['symbol'], meta)}",
               f"   ${b['price']:.2f} ({b['chg']:+.1f}%)  20일선 ${b['ma20']:.2f}  "
               f"60일 고점 대비 {b['from_hi60']:+.0f}%"]
-    L += ["", "※ 반등을 보장하는 신호가 아니에요. 참고용으로만 보세요."]
+        news = b.get("news") or []
+        L += ["   📰 최근 뉴스", *news] if news else ["   📰 최근 2주 뉴스 없음"]
+        L.append("")
+    L += ["※ 반등을 보장하는 신호가 아니에요. 참고용으로만 보세요."]
     return "\n".join(L)
 
 
@@ -222,8 +256,27 @@ def replay(n: int) -> int:
         print(f"  {d.date()} · {ok_cnt}건  {', '.join(shown) or '-'}")
     uniq = sorted({s for s in checked if checked[s][0]})
     print(f"\n합계 {total}건 · 중복 제외 {len(uniq)}종목: {', '.join(uniq) or '-'}")
-    for s in uniq:
-        print(f"  {s}  {names.get(s, '')}")
+    if not uniq:
+        return 0
+
+    # 실제 전송될 메시지 미리보기 (신호가 있던 마지막 날 기준)
+    last = max(d for d, row in sig.iterrows() if any(checked.get(s, (False,))[0]
+                                                     for s in sig.columns[row.fillna(False)]))
+    i = close.index.get_loc(last)
+    ma20 = close.rolling(20).mean()
+    buys = []
+    for s in sig.columns[sig.loc[last].fillna(False)]:
+        if not checked.get(s, (False,))[0]:
+            continue
+        px = float(close[s].iloc[i])
+        buys.append({"symbol": s, "price": px, "chg": (px / float(close[s].iloc[i - 1]) - 1) * 100,
+                     "ma20": float(ma20[s].iloc[i]),
+                     "from_hi60": (px / float(close[s].iloc[max(0, i - 59):i + 1].max()) - 1) * 100,
+                     "news": recent_news(s)})
+    meta = al.load_meta()
+    al.fill_meta(meta, [b["symbol"] for b in buys], names)
+    print("\n--- 전송 메시지 미리보기 ---")
+    print(buy_message(last.strftime("%Y-%m-%d"), buys, meta))
     return 0
 
 
@@ -253,6 +306,7 @@ def main() -> int:
     for b in buys:
         ok, why = is_operating_company(b["symbol"])
         if ok:
+            b["news"] = recent_news(b["symbol"])     # 알림에 붙일 최근 뉴스
             kept.append(b)
         else:
             print(f"[제외] {b['symbol']}: {why}")
