@@ -478,6 +478,80 @@ def main_break():
     print("→ results/break_high.md")
 
 
+def band_label(lo_p, hi_p) -> str:
+    if hi_p is None:
+        return f"${lo_p} 이상"
+    if not lo_p:
+        return f"${hi_p} 이하"
+    return f"${lo_p}~{hi_p}"
+
+
+def main_ma20():
+    """횡보 뒤 진입 신호를 5일선 돌파 vs 20일선 돌파로 비교 (나머지 조건 동일)."""
+    bt.OUT.mkdir(exist_ok=True)
+    syms = universe()
+    close, vol = load(syms + ["SPY"])
+    spy = close.pop("SPY").astype(float)
+    raw = RAW.reindex(columns=close.columns) if RAW is not None else close
+    print(f"가격 데이터 {close.shape[1]}종목, {close.index[0].date()} ~ {close.index[-1].date()}")
+
+    RD = RANGE_DAYS
+    ma5, ma20 = close.rolling(5).mean(), close.rolling(20).mean()
+    hi_r, lo_r = close.rolling(RD).max().shift(1), close.rolling(RD).min().shift(1)
+    cons = ((hi_r - lo_r) / hi_r * 100 <= RANGE_PCT) & hi_r.notna()
+    entries_by_rule = {
+        "5일선 돌파 (현재)": (close.shift(1) <= ma5.shift(1)) & (close > ma5),
+        "20일선 돌파": (close.shift(1) <= ma20.shift(1)) & (close > ma20),
+    }
+
+    ndays = (close.index >= bt.START).sum()
+    s_spy = spy[spy.index >= bt.START].dropna()
+    yrs = (s_spy.index[-1] - s_spy.index[0]).days / 365.25
+    spy_cagr = ((s_spy.iloc[-1] / s_spy.iloc[0]) ** (1 / yrs) - 1) * 100
+    spy_mdd = ((s_spy / s_spy.cummax()) - 1).min() * 100
+
+    fmt_num = {"거래수": "{:.0f}", "하루신호": "{:.1f}", "평균보유일": "{:.1f}", "승률": "{:.1f}%"}
+    md = [f"# 진입 신호 비교: 5일선 돌파 vs 20일선 돌파 ({bt.START[:4]} ~ {close.index[-1].date()})", "",
+          f"- 공통 조건: 직전 {RD}거래일 이상 고저 범위 ≤ {RANGE_PCT:.0f}% 횡보 (전고점 돌파 조건 없음)",
+          "- 매도: 종가 < 20일선 × 0.95 (동일)",
+          f"- 후보군: 현재 상장 종목 {close.shape[1]}개 (생존 편향), 비용 매수·매도 각 0.1%",
+          f"- SPY 보유: 연평균 {spy_cagr:+.1f}%, 최대낙폭 {spy_mdd:.1f}%", ""]
+
+    for lo_p, hi_p in [(0, 40), (5, 40), (40, 100), (100, 200), (40, None)]:
+        band_name = band_label(lo_p, hi_p)
+        band = (raw >= lo_p) & ((raw <= hi_p) if hi_p else True)
+        rows = []
+        for name, ent in entries_by_rule.items():
+            sig = (ent & band & cons).fillna(False)
+            t = live_trades(close, sig, ma20, bt.START)
+            row = {"진입": name, "거래수": len(t), "하루신호": len(t) / ndays,
+                   "승률": (t.ret > 0).mean() * 100 if len(t) else float("nan"),
+                   "평균수익": t.ret.mean() * 100 if len(t) else float("nan"),
+                   "평균이익": t.ret[t.ret > 0].mean() * 100 if len(t) else float("nan"),
+                   "평균손실": t.ret[t.ret <= 0].mean() * 100 if len(t) else float("nan"),
+                   "평균보유일": t.days.mean() if len(t) else float("nan")}
+            for k in (10, 20):
+                if len(t):
+                    eq, tk = slots(t, close.astype(float), k, bt.START)
+                    st = pf.stats(eq, tk, spy)
+                    row[f"{k}칸 CAGR"], row[f"{k}칸 낙폭"] = st.iloc[-1]["CAGR"], st.iloc[-1]["MDD"]
+                else:
+                    row[f"{k}칸 CAGR"] = row[f"{k}칸 낙폭"] = float("nan")
+            rows.append(row)
+            print(f"  {band_name} {name}: {row}", flush=True)
+
+        df = pd.DataFrame(rows); cols = list(df.columns)
+        md += [f"## 가격대 {band_name}", "",
+               "| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
+        for _, r in df.iterrows():
+            md.append("| " + " | ".join(str(r[c]) if c == cols[0] else ("-" if pd.isna(r[c]) else
+                       fmt_num.get(c, "{:+.1f}%").format(r[c])) for c in cols) + " |")
+        md.append("")
+
+    (bt.OUT / "ma20_entry.md").write_text("\n".join(md), encoding="utf-8")
+    print("→ results/ma20_entry.md")
+
+
 if __name__ == "__main__":
     if os.environ.get("BANDS") == "1":
         main_bands()
@@ -485,5 +559,7 @@ if __name__ == "__main__":
         main_range()
     elif os.environ.get("BREAK") == "1":
         main_break()
+    elif os.environ.get("MA20") == "1":
+        main_ma20()
     else:
         main()
