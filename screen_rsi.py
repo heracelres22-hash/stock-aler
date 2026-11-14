@@ -26,6 +26,13 @@ FUND_RE = re.compile(
     r"\b(fund|funds|etf|etn|closed[-\s]?end|spac|acquisition corp|blank check"
     r"|(income|credit|royalty|unit|investment|mortgage|realty|properties)\s+trust)\b", re.I)
 
+# 펀드·BDC가 사업설명에 쓰는 법적 표현. 정상 운용사(BlackRock "investment manager",
+# SEI "investment solutions")는 쓰지 않는 용어만 골라 오탐을 막는다.
+SUMMARY_FUND_RE = re.compile(
+    r"\b(closed[-\s]?end|business development company|regulated investment company"
+    r"|non[-\s]?diversified\s+(closed|management|investment)"
+    r"|the\s+(fund|trust)\s+(invests|seeks|intends))\b", re.I)
+
 DEF = {"min_price": 40, "max_price": 200, "range_days": 40, "range_pct": 10, "track_days": 60,
        "exit_pct": 5, "min_mktcap": 1_000_000_000,
        "max_per": 25, "max_debt_equity": 150, "min_roe": 10}
@@ -191,6 +198,9 @@ def is_operating_company(sym: str) -> tuple[bool, str]:
     if FUND_RE.search(name):
         return False, "이름이 펀드·신탁"
     summary = info.get("longBusinessSummary") or ""
+    m = SUMMARY_FUND_RE.search(summary)
+    if m:                                            # 폐쇄형 펀드·BDC 등 투자회사
+        return False, f"사업설명: {m.group(0)}"
     if FUND_RE.search(summary) and not info.get("fullTimeEmployees"):
         return False, "사업설명이 펀드 + 직원수 없음"
     return True, ""
