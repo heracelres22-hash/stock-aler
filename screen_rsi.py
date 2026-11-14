@@ -80,8 +80,26 @@ def universe() -> dict[str, str]:
     return names
 
 
+def translate_ko(text: str) -> str:
+    """영문 헤드라인을 한국어로. 실패하면 원문 그대로 (알림이 끊기지 않도록)."""
+    import requests
+
+    if not text:
+        return text
+    try:
+        r = requests.get("https://translate.googleapis.com/translate_a/single",
+                         params={"client": "gtx", "sl": "en", "tl": "ko", "dt": "t", "q": text},
+                         timeout=10)
+        r.raise_for_status()
+        out = "".join(p[0] for p in r.json()[0] if p and p[0]).strip()
+        return out or text
+    except Exception as e:
+        print(f"[번역 실패] {type(e).__name__}: {text[:40]}")
+        return text
+
+
 def recent_news(sym: str, count: int = 3, days: int = 14) -> list[str]:
-    """최근 뉴스 헤드라인 (제목 · 출처 · 날짜 · 링크). 실패하면 빈 목록."""
+    """최근 뉴스 헤드라인 (한글 제목 · 출처 · 날짜 · 링크). 실패하면 빈 목록."""
     import yfinance as yf
 
     try:
@@ -101,6 +119,7 @@ def recent_news(sym: str, count: int = 3, days: int = 14) -> list[str]:
             continue
         src = ((c.get("provider") or {}).get("displayName") or "").strip()
         url = ((c.get("canonicalUrl") or c.get("clickThroughUrl") or {}) or {}).get("url") or ""
+        title = translate_ko(title)
         if len(title) > 90:
             title = title[:89].rstrip() + "…"
         head = f"   - {title}"
