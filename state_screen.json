@@ -2,5 +2,21 @@
  "last_run": "2026-11-14",
  "last_day": "2026-11-13",
  "active": {},
- "alerted": {}
+ "alerted": {},
+ "sectors": {
+  "asof": "2026-11-14",
+  "list": [
+   "Technology",
+   "Financial Services",
+   "Communication Services",
+   "Healthcare",
+   "Consumer Cyclical",
+   "Industrials",
+   "Consumer Defensive",
+   "Energy",
+   "Basic Materials",
+   "Utilities",
+   "Real Estate"
+  ]
+ }
 }
