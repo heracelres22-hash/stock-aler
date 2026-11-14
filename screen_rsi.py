@@ -45,18 +45,56 @@ def in_window(now: datetime) -> bool:
     return now.weekday() < 5 and dtime(16, 15) <= now.time() <= dtime(18, 30)
 
 
-def universe() -> dict[str, str]:
-    """S&P 500 시가총액 상위 5개 섹터(기술·금융·헬스케어·소비재·커뮤니케이션)에서
-    가격 범위 안의 미국 정규 거래소 종목만 조회 (Yahoo 스크리너 250개씩 페이지 조회)."""
+ALL_SECTORS = ["Technology", "Financial Services", "Healthcare", "Consumer Cyclical",
+               "Communication Services", "Industrials", "Consumer Defensive", "Energy",
+               "Utilities", "Real Estate", "Basic Materials"]
+SECTOR_REFRESH_DAYS = 30
+SECTORS_USED: list[str] = []          # 이번 실행에서 실제로 쓴 섹터 (알림 문구용)
+
+
+def top_sectors(n: int = 5, state: dict | None = None) -> list[str]:
+    """시가총액 상위 n개 섹터를 직접 집계해서 반환 — 시장 구성이 바뀌면 알림도 따라 바뀜.
+    섹터별 대형주 100개의 시총 합으로 순위를 매기고, 결과는 한 달간 재사용한다.
+    조회가 실패하면 직전 순위(state 캐시) → 기본 순서로 물러난다."""
     import yfinance as yf
     from yfinance import EquityQuery as Q
 
-    # S&P 500 시가총액 상위 5개 섹터 (yfinance 스크리너 섹터 값 기준)
-    TOP_SECTORS = ["Technology", "Financial Services", "Healthcare",
-                   "Consumer Cyclical", "Communication Services"]
+    cache = (state or {}).get("sectors") or {}
+    if cache.get("list") and cache.get("asof"):
+        age = (datetime.now(al.NY).date()
+               - datetime.strptime(cache["asof"], "%Y-%m-%d").date()).days
+        if 0 <= age < SECTOR_REFRESH_DAYS:
+            return cache["list"][:n]
 
+    totals: dict[str, float] = {}
+    for sec in ALL_SECTORS:
+        try:
+            q = Q("and", [Q("eq", ["region", "us"]),
+                          Q("is-in", ["exchange", *al.CONFIG["exchanges"]]),
+                          Q("eq", ["sector", sec])])
+            res = yf.screen(q, sortField="intradaymarketcap", sortAsc=False, size=100)
+            totals[sec] = sum(float(x.get("marketCap") or 0) for x in res.get("quotes", []))
+        except Exception as e:
+            print(f"[섹터 집계 실패] {sec}: {type(e).__name__}")
+    if not totals:
+        return (cache.get("list") or ALL_SECTORS)[:n]
+
+    ranked = sorted(totals, key=lambda s: totals[s], reverse=True)
+    print("섹터 시총 순위: " + ", ".join(f"{s} {totals[s]/1e12:.1f}조$" for s in ranked[:n]))
+    if state is not None:
+        state["sectors"] = {"asof": datetime.now(al.NY).strftime("%Y-%m-%d"), "list": ranked}
+    return ranked[:n]
+
+
+def universe(state: dict | None = None) -> dict[str, str]:
+    """시가총액 상위 섹터에서 가격 범위 안의 미국 정규 거래소 종목만 조회
+    (Yahoo 스크리너 250개씩 페이지 조회)."""
+    import yfinance as yf
+    from yfinance import EquityQuery as Q
+
+    SECTORS_USED[:] = top_sectors(5, state)
     names: dict[str, str] = {}
-    for sector in TOP_SECTORS:
+    for sector in SECTORS_USED:
         off = 0
         while off < 8000:
             q = Q("and", [
@@ -286,7 +324,8 @@ def run_day(close: pd.DataFrame, st: dict):
 
 def buy_message(day, buys, meta) -> str:
     L = [f"🟢 횡보 후 20일선 돌파 {fmt(day)} (장 마감 기준)",
-         f"섹터: S&P 500 시가총액 상위 5개 (기술 · 금융 · 헬스케어 · 소비재 · 커뮤니케이션)",
+         f"섹터: 시가총액 상위 {len(SECTORS_USED)}개 "
+         f"({' · '.join(al.SECTOR_KO.get(x, x) for x in SECTORS_USED)})",
          f"조건: ${SC['min_price']}~${SC['max_price']} · 직전 {SC['range_days']}거래일 고저 범위 ≤{SC['range_pct']:g}% 횡보 → 20일선 상향 돌파",
          f"가치 필터: PER≤{SC['max_per']:g} · 부채비율≤{SC['max_debt_equity']:g}% · ROE≥{SC['min_roe']:g}%", ""]
     for b in buys:
@@ -315,7 +354,8 @@ def exit_message(day, exits, expired, meta) -> str:
 def replay(n: int) -> int:
     """최근 n거래일을 현재 규칙으로 되돌려 매수 신호를 나열 (전송·상태 저장 없음).
     setups()는 과거 데이터만 쓰므로 그날 알림이 봤을 것과 같은 결과."""
-    names = universe()
+    cached = json.loads(STATE.read_text(encoding="utf-8")) if STATE.exists() else {}
+    names = universe(cached)
     syms = sorted(names)
     print(f"대상 {len(syms)}종목 · 최근 {n}거래일 리플레이")
     close = download(syms).dropna(how="all")
@@ -402,7 +442,7 @@ def main() -> int:
         print(f"실행 시간이 아니거나 오늘 이미 실행함 ({now:%a %H:%M} ET) → 건너뜀")
         return 0
 
-    names = universe()
+    names = universe(st)
     syms = sorted(set(names) | set(st.get("active", {})))
     print(f"대상 {len(syms)}종목")
     close = download(syms)
