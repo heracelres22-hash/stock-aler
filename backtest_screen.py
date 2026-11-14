@@ -33,11 +33,12 @@ TAG = "_plain" if PLAIN else ("_range" if RANGE else "")
 
 
 def universe() -> list[str]:
-    """S&P 500 시가총액 상위 2개 섹터(Technology + Financial Services) 미국 정규 거래소 전 종목."""
+    """S&P 500 시가총액 상위 5개 섹터(기술·금융·헬스케어·소비재·커뮤니케이션) 미국 정규 거래소 전 종목."""
     import yfinance as yf
     from yfinance import EquityQuery as Q
 
-    TOP_SECTORS = ["Technology", "Financial Services"]
+    TOP_SECTORS = ["Technology", "Financial Services", "Healthcare",
+                   "Consumer Cyclical", "Communication Services"]
     out: list[str] = []
     for sector in TOP_SECTORS:
         off = 0

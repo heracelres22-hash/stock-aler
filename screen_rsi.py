@@ -46,13 +46,14 @@ def in_window(now: datetime) -> bool:
 
 
 def universe() -> dict[str, str]:
-    """S&P 500 시가총액 상위 2개 섹터(Technology, Financial Services)에서
+    """S&P 500 시가총액 상위 5개 섹터(기술·금융·헬스케어·소비재·커뮤니케이션)에서
     가격 범위 안의 미국 정규 거래소 종목만 조회 (Yahoo 스크리너 250개씩 페이지 조회)."""
     import yfinance as yf
     from yfinance import EquityQuery as Q
 
-    # S&P 500 시가총액 상위 2개 섹터 (yfinance 스크리너 섹터 값 기준)
-    TOP_SECTORS = ["Technology", "Financial Services"]
+    # S&P 500 시가총액 상위 5개 섹터 (yfinance 스크리너 섹터 값 기준)
+    TOP_SECTORS = ["Technology", "Financial Services", "Healthcare",
+                   "Consumer Cyclical", "Communication Services"]
 
     names: dict[str, str] = {}
     for sector in TOP_SECTORS:
@@ -285,7 +286,7 @@ def run_day(close: pd.DataFrame, st: dict):
 
 def buy_message(day, buys, meta) -> str:
     L = [f"🟢 횡보 후 20일선 돌파 {fmt(day)} (장 마감 기준)",
-         f"섹터: S&P 500 시가총액 상위 2개 (Technology · Financial Services)",
+         f"섹터: S&P 500 시가총액 상위 5개 (기술 · 금융 · 헬스케어 · 소비재 · 커뮤니케이션)",
          f"조건: ${SC['min_price']}~${SC['max_price']} · 직전 {SC['range_days']}거래일 고저 범위 ≤{SC['range_pct']:g}% 횡보 → 20일선 상향 돌파",
          f"가치 필터: PER≤{SC['max_per']:g} · 부채비율≤{SC['max_debt_equity']:g}% · ROE≥{SC['min_roe']:g}%", ""]
     for b in buys:
